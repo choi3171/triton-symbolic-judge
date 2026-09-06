@@ -1,0 +1,1916 @@
+[
+ {
+  "name": "SumAggregator",
+  "repo": "AlexMinhao/NAS_GNN",
+  "i": 0,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_poi_fused_sum_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.0,
+  "mem_errors": 0,
+  "ac": 64,
+  "n_out": 64,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "LinearEmbedding",
+  "repo": "Akhil-Raj/Trajectory-Transformer",
+  "i": 1,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 0,
+  "launches": 2,
+  "param_max": 0.4776742458343506,
+  "kernels": [
+   "extern:mm",
+   "triton_poi_fused_mul_0"
+  ],
+  "externs": 1,
+  "t_exec": 0.02,
+  "mem_errors": 0,
+  "ac": 256,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "CustomizeLayer",
+  "repo": "Abhishekvats1997/Torch-Pruning",
+  "i": 2,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 1.262177448353619e-29,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 7.606781867388308e-23,
+  "kernels": [
+   "triton_poi_fused_add_div_mul_pow_sqrt_sum_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.02,
+  "mem_errors": 0,
+  "ac": 256,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {
+     "overflow": 256,
+     "div-by-zero": 256
+    },
+    "spec": {
+     "overflow": 256,
+     "div-by-zero": 256
+    }
+   },
+   "10": {
+    "kernel": {
+     "overflow": 256,
+     "div-by-zero": 256
+    },
+    "spec": {
+     "overflow": 256,
+     "div-by-zero": 256
+    }
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "LayerNorm",
+  "repo": "AWilcke/Dissertation",
+  "i": 3,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 4.76837158203125e-07,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 1.0,
+  "kernels": [
+   "triton_poi_fused_add_div_mean_mul_std_sub_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.03,
+  "mem_errors": 0,
+  "ac": 256,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "LayerNorm",
+  "repo": "Akhil-Raj/Trajectory-Transformer",
+  "i": 4,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 3.8743019104003906e-07,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 1.0,
+  "kernels": [
+   "triton_poi_fused_add_div_mean_mul_std_sub_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.03,
+  "mem_errors": 0,
+  "ac": 256,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "Norm",
+  "repo": "Aalanli/MusicGeneration",
+  "i": 5,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 4.76837158203125e-07,
+  "nan": 0,
+  "launches": 2,
+  "param_max": 1.0,
+  "kernels": [
+   "triton_poi_fused_mean_sub_0",
+   "triton_poi_fused_add_mean_mul_pow_rsqrt_1"
+  ],
+  "externs": 0,
+  "t_exec": 0.03,
+  "mem_errors": 0,
+  "ac": 256,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {
+     "overflow": 256,
+     "div-by-zero": 256
+    },
+    "spec": {
+     "overflow": 256,
+     "div-by-zero": 256
+    }
+   },
+   "10": {
+    "kernel": {
+     "overflow": 256,
+     "div-by-zero": 256
+    },
+    "spec": {
+     "overflow": 256,
+     "div-by-zero": 256
+    }
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "BehlerAngular",
+  "repo": "AlexanderDKazakov/schnetpack",
+  "i": 6,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_poi_fused_cat_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.01,
+  "mem_errors": 0,
+  "ac": 512,
+  "n_out": 512,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "BottleneckBlock",
+  "repo": "Aamer98/FeatureNorm",
+  "i": 7,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    2,
+    2
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 0,
+  "launches": 6,
+  "param_max": 1.508541226387024,
+  "kernels": [
+   "extern:convolution",
+   "triton_poi_fused_relu_0",
+   "extern:convolution",
+   "triton_poi_fused_convolution_relu_1",
+   "extern:convolution",
+   "triton_poi_fused_add_relu_threshold_backward_2"
+  ],
+  "externs": 3,
+  "t_exec": 0.01,
+  "mem_errors": 0,
+  "ac": 0,
+  "n_out": 64,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "volta_secs": 0.001,
+  "verdict": "PASS",
+  "via": "Volta"
+ },
+ {
+  "name": "Mlp",
+  "repo": "Aalanli/MusicGeneration",
+  "i": 8,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 0,
+  "launches": 3,
+  "param_max": 0.0423043854534626,
+  "kernels": [
+   "extern:mm",
+   "triton_poi_fused_gelu_0",
+   "extern:addmm"
+  ],
+  "externs": 2,
+  "t_exec": 0.05,
+  "mem_errors": 0,
+  "ac": 256,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {
+     "overflow": 256,
+     "unknown:erf": 256
+    },
+    "spec": {
+     "overflow": 256,
+     "unknown:erf": 256
+    }
+   },
+   "10": {
+    "kernel": {
+     "overflow": 256,
+     "unknown:erf": 256
+    },
+    "spec": {
+     "overflow": 256,
+     "unknown:erf": 256
+    }
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "GCN",
+  "repo": "AlexMinhao/NAS_GNN",
+  "i": 9,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4
+   ],
+   [
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": false,
+  "max_abs_diff": 3.4368371963500977,
+  "nan": 0,
+  "launches": 5,
+  "param_max": 0.48009705543518066,
+  "kernels": [
+   "extern:addmm",
+   "extern:mm",
+   "triton_poi_fused_elu_0",
+   "extern:addmm",
+   "extern:mm"
+  ],
+  "externs": 4,
+  "verdict": "KERNEL-UNSUPPORTED",
+  "reason": "select on a symbolic comparison that is not a max/min pattern (ogt): cmp(((((p_gc2.W.weight[0]*p_gc1.W., 0.0) ? ((((p_gc2.W.weight[0]*p_gc1.W. : (exp(((((p_gc2.W.weight[0]*p_g"
+ },
+ {
+  "name": "SimpleBlock",
+  "repo": "Aamer98/FeatureNorm",
+  "i": 10,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    2,
+    2
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 0,
+  "launches": 4,
+  "param_max": 0.9667312502861023,
+  "kernels": [
+   "extern:convolution",
+   "triton_poi_fused_relu_0",
+   "extern:convolution",
+   "triton_poi_fused_add_relu_threshold_backward_1"
+  ],
+  "externs": 2,
+  "t_exec": 0.02,
+  "mem_errors": 0,
+  "ac": 0,
+  "n_out": 64,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "volta_secs": 0.001,
+  "verdict": "PASS",
+  "via": "Volta"
+ },
+ {
+  "name": "Aggregate",
+  "repo": "AlexanderDKazakov/schnetpack",
+  "i": 11,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 2.384185791015625e-07,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_poi_fused_sum_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.01,
+  "mem_errors": 0,
+  "ac": 256,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "KaggleAccuracy",
+  "repo": "AlessandroRuzzi/Computational-Intelligence-Lab-2021",
+  "i": 12,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ],
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 0,
+  "launches": 3,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_red_fused_mean_0",
+   "triton_red_fused_mean_0",
+   "triton_red_fused__to_copy_eq_gt_mean_1"
+  ],
+  "externs": 0,
+  "verdict": "KERNEL-UNSUPPORTED",
+  "reason": "float->int conversion of a symbolic value"
+ },
+ {
+  "name": "CosAttention",
+  "repo": "AlexMinhao/NAS_GNN",
+  "i": 13,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ],
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 16,
+  "launches": 1,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_poi_fused_mul_sum_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.02,
+  "mem_errors": 0,
+  "ac": 64,
+  "n_out": 64,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "FullyConnectedNet",
+  "repo": "Abhishekvats1997/Torch-Pruning",
+  "i": 14,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 0,
+  "launches": 3,
+  "param_max": 0.4776742458343506,
+  "kernels": [
+   "extern:mm",
+   "triton_poi_fused_relu_threshold_backward_0",
+   "extern:addmm"
+  ],
+  "externs": 2,
+  "t_exec": 0.25,
+  "mem_errors": 0,
+  "ac": 0,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "volta_secs": 0.006,
+  "verdict": "PASS",
+  "via": "Volta"
+ },
+ {
+  "name": "GatAttention",
+  "repo": "AlexMinhao/NAS_GNN",
+  "i": 15,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ],
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": false,
+  "max_abs_diff": 1.321253899105302e+34,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 1.015667013914862e+35,
+  "degenerate_params": true,
+  "kernels": [
+   "triton_poi_fused_add_leaky_relu_mul_sum_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.01,
+  "mem_errors": 0,
+  "ac": 0,
+  "n_out": 64,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "volta_secs": 0.002,
+  "verdict": "FAIL",
+  "via": "Volta+witness",
+  "reason": "64 outputs differ: witness at random point 0: spec=0.0389808 kernel=-0.0973412",
+  "witness": {
+   "n_differ": 64,
+   "spec": 0.03898084686576825,
+   "kernel": -0.09734124252390162,
+   "sample": 0
+  }
+ },
+ {
+  "name": "TripletLoss",
+  "repo": "Alonso94/Representation-learning",
+  "i": 16,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ],
+   [
+    4,
+    4,
+    4,
+    4
+   ],
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_per_fused_abs_add_clamp_mean_pow_sub_sum_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.03,
+  "mem_errors": 0,
+  "ac": 1,
+  "n_out": 1,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "GatSymAttention",
+  "repo": "AlexMinhao/NAS_GNN",
+  "i": 17,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ],
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 1.683598453428117e+29,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 1.015667013914862e+35,
+  "degenerate_params": true,
+  "kernels": [
+   "triton_poi_fused_add_leaky_relu_mul_sum_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.02,
+  "mem_errors": 0,
+  "ac": 0,
+  "n_out": 64,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "volta_secs": 0.004,
+  "verdict": "FAIL",
+  "via": "Volta+witness",
+  "reason": "64 outputs differ: witness at random point 0: spec=-0.363893 kernel=-0.042218",
+  "witness": {
+   "n_differ": 64,
+   "spec": -0.3638928519055452,
+   "kernel": -0.042218040519477765,
+   "sample": 0
+  }
+ },
+ {
+  "name": "HuberLoss",
+  "repo": "AndrewPaulChester/sage-code",
+  "i": 18,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ],
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_per_fused_div_mul_smooth_l1_loss_0"
+  ],
+  "externs": 0,
+  "verdict": "KERNEL-UNSUPPORTED",
+  "reason": "select on a symbolic comparison that is not a max/min pattern (olt): cmp(abs((in0[0] + (in1[0]*-1.0))), 1.0) ? (0.5*abs((in0[0] + (in1[0]*-1. : (abs((in0[0] + (in1[0]*-1.0)))"
+ },
+ {
+  "name": "ScaledDotProductAttention",
+  "repo": "AlbertiPot/attention-is-all-you-need-pytorch",
+  "i": 19,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ],
+   [
+    4,
+    4,
+    4,
+    4
+   ],
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 1.1920928955078125e-07,
+  "nan": 0,
+  "launches": 5,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_poi_fused_div_0",
+   "extern:bmm",
+   "triton_poi_fused__softmax_1",
+   "triton_poi_fused__softmax_2",
+   "extern:bmm"
+  ],
+  "externs": 2,
+  "t_exec": 0.07,
+  "mem_errors": 0,
+  "ac": 256,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {
+     "underflow": 256
+    },
+    "spec": {
+     "underflow": 256
+    }
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "ScalarBiasScale",
+  "repo": "Ali-Homsi/githubrepo",
+  "i": 20,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": false,
+  "max_abs_diff": 0.9990525841712952,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 1.0,
+  "kernels": [
+   "triton_poi_fused_add_mul_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.01,
+  "mem_errors": 0,
+  "ac": 0,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "volta_secs": 0.001,
+  "verdict": "FAIL",
+  "via": "Volta+witness",
+  "reason": "256 outputs differ: witness at random point 0: spec=0.543858 kernel=0.477991",
+  "witness": {
+   "n_differ": 256,
+   "spec": 0.5438580001093601,
+   "kernel": 0.47799075723862894,
+   "sample": 0
+  }
+ },
+ {
+  "name": "MeanStd",
+  "repo": "AnetaKaczynska/video-GAN",
+  "i": 21,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 8.195638656616211e-08,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_per_fused_mean_mul_pow_sub_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.04,
+  "mem_errors": 0,
+  "ac": 32,
+  "n_out": 32,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "L2Norm",
+  "repo": "AlphaGoMK/ssd.pytorch",
+  "i": 22,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 1.1920928955078125e-07,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 1.0,
+  "kernels": [
+   "triton_poi_fused_add_div_mul_pow_sqrt_sum_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.03,
+  "mem_errors": 0,
+  "ac": 256,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "PositionwiseFeedForward",
+  "repo": "AlbertiPot/attention-is-all-you-need-pytorch",
+  "i": 23,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 8.344650268554688e-07,
+  "nan": 0,
+  "launches": 5,
+  "param_max": 1.0,
+  "kernels": [
+   "extern:mm",
+   "triton_poi_fused_relu_threshold_backward_0",
+   "extern:addmm",
+   "triton_poi_fused_add_native_layer_norm_1",
+   "triton_poi_fused_add_native_layer_norm_2"
+  ],
+  "externs": 2,
+  "t_exec": 0.07,
+  "mem_errors": 0,
+  "ac": 0,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {
+     "overflow": 256,
+     "div-by-zero": 256
+    },
+    "spec": {
+     "overflow": 256,
+     "div-by-zero": 256
+    }
+   },
+   "10": {
+    "kernel": {
+     "overflow": 256,
+     "div-by-zero": 256
+    },
+    "spec": {
+     "overflow": 256,
+     "div-by-zero": 256
+    }
+   }
+  },
+  "pre_worse": false,
+  "volta_secs": 0.191,
+  "verdict": "PASS",
+  "via": "Volta"
+ },
+ {
+  "name": "NormalizationLayer",
+  "repo": "AnetaKaczynska/video-GAN",
+  "i": 24,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 1.1920928955078125e-07,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_poi_fused_add_mean_mul_pow_rsqrt_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.03,
+  "mem_errors": 0,
+  "ac": 256,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {
+     "overflow": 256,
+     "div-by-zero": 256
+    },
+    "spec": {
+     "overflow": 256,
+     "div-by-zero": 256
+    }
+   },
+   "10": {
+    "kernel": {
+     "overflow": 256,
+     "div-by-zero": 256
+    },
+    "spec": {
+     "overflow": 256,
+     "div-by-zero": 256
+    }
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "Decoder",
+  "repo": "AbinavRavi/VAE-KL",
+  "i": 25,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": false,
+  "tol": true,
+  "max_abs_diff": 4.6566128730773926e-09,
+  "nan": 0,
+  "launches": 5,
+  "param_max": 0.24976137280464172,
+  "kernels": [
+   "extern:convolution",
+   "triton_poi_fused_leaky_relu_0",
+   "extern:convolution",
+   "triton_poi_fused_leaky_relu_1",
+   "extern:convolution"
+  ],
+  "externs": 3,
+  "verdict": "KERNEL-UNSUPPORTED",
+  "reason": "extern transposed convolution"
+ },
+ {
+  "name": "LayerNorm",
+  "repo": "AndrewPaulChester/sage-code",
+  "i": 26,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 3.8743019104003906e-07,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_poi_fused_add_div_mean_std_sub_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.05,
+  "mem_errors": 0,
+  "ac": 256,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "MaskedMSELoss",
+  "repo": "Anshul044/Project-NN",
+  "i": 27,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ],
+   [
+    4,
+    4,
+    4,
+    4
+   ],
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": false,
+  "max_abs_diff": 0.023351192474365234,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_per_fused_div_mse_loss_mul_sum_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.11,
+  "mem_errors": 0,
+  "ac": 0,
+  "n_out": 1,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {
+     "div-by-zero": 1
+    },
+    "spec": {
+     "div-by-zero": 1
+    }
+   },
+   "10": {
+    "kernel": {
+     "div-by-zero": 1
+    },
+    "spec": {
+     "div-by-zero": 1
+    }
+   }
+  },
+  "pre_worse": false,
+  "volta_secs": 0.59,
+  "verdict": "FAIL",
+  "via": "Volta+witness",
+  "reason": "1 outputs differ: witness at random point 0: spec=-8.11927 kernel=131.744",
+  "witness": {
+   "n_differ": 1,
+   "spec": -8.11927409511955,
+   "kernel": 131.74435391786238,
+   "sample": 0
+  }
+ },
+ {
+  "name": "SimpleMLP",
+  "repo": "AlexandreGuilbault/CS294-Hws",
+  "i": 28,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 0,
+  "launches": 7,
+  "param_max": 0.4776742458343506,
+  "kernels": [
+   "extern:mm",
+   "triton_poi_fused_relu_threshold_backward_0",
+   "extern:mm",
+   "triton_poi_fused_relu_threshold_backward_1",
+   "extern:mm",
+   "triton_poi_fused_relu_threshold_backward_2",
+   "extern:addmm"
+  ],
+  "externs": 4,
+  "t_exec": 2.17,
+  "mem_errors": 0,
+  "ac": 0,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "volta_secs": 0.163,
+  "verdict": "PASS",
+  "via": "Volta"
+ },
+ {
+  "name": "MultiHeadAttention",
+  "repo": "AlbertiPot/attention-is-all-you-need-pytorch",
+  "i": 29,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4
+   ],
+   [
+    4,
+    4,
+    4
+   ],
+   [
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 7.748603820800781e-07,
+  "nan": 0,
+  "launches": 14,
+  "param_max": 1.0,
+  "kernels": [
+   "extern:mm",
+   "extern:mm",
+   "extern:mm",
+   "triton_poi_fused_clone_div_0",
+   "triton_poi_fused_clone_1",
+   "extern:bmm",
+   "triton_poi_fused__softmax_2",
+   "triton_poi_fused__softmax_3",
+   "triton_poi_fused_clone_4",
+   "extern:bmm",
+   "triton_poi_fused_clone_4",
+   "extern:mm",
+   "triton_poi_fused_add_native_layer_norm_5",
+   "triton_poi_fused_add_native_layer_norm_6"
+  ],
+  "externs": 6,
+  "t_exec": 0.15,
+  "mem_errors": 0,
+  "ac": 64,
+  "n_out": 64,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {
+     "overflow": 64,
+     "div-by-zero": 64
+    },
+    "spec": {
+     "overflow": 64,
+     "div-by-zero": 64
+    }
+   },
+   "10": {
+    "kernel": {
+     "overflow": 64,
+     "div-by-zero": 64,
+     "underflow": 64
+    },
+    "spec": {
+     "overflow": 64,
+     "div-by-zero": 64,
+     "underflow": 64
+    }
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "Net",
+  "repo": "AbbasMZ/jittor",
+  "i": 30,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    3,
+    32,
+    32
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 0,
+  "launches": 9,
+  "param_max": 0.11543267965316772,
+  "kernels": [
+   "extern:convolution",
+   "triton_poi_fused_convolution_0",
+   "triton_poi_fused_max_pool2d_with_indices_1",
+   "extern:convolution",
+   "triton_poi_fused_convolution_2",
+   "triton_poi_fused_max_pool2d_with_indices_3",
+   "extern:addmm",
+   "extern:addmm",
+   "extern:addmm"
+  ],
+  "externs": 5,
+  "verdict": "KERNEL-UNSUPPORTED",
+  "reason": "select on a symbolic comparison that is not a max/min pattern (ogt): cmp(((in0[1]*p_conv1.weight[0]) + , ((in0[0]*p_conv1.weight[0]) + ) ? 1 : 0"
+ },
+ {
+  "name": "EncoderLayer",
+  "repo": "AlbertiPot/attention-is-all-you-need-pytorch",
+  "i": 31,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 5.364418029785156e-07,
+  "nan": 0,
+  "launches": 20,
+  "param_max": 1.0,
+  "kernels": [
+   "extern:mm",
+   "extern:mm",
+   "extern:mm",
+   "triton_poi_fused_clone_div_0",
+   "triton_poi_fused_clone_1",
+   "extern:bmm",
+   "triton_poi_fused__softmax_2",
+   "triton_poi_fused__softmax_3",
+   "triton_poi_fused_clone_4",
+   "extern:bmm",
+   "triton_poi_fused_clone_4",
+   "extern:mm",
+   "triton_poi_fused_add_native_layer_norm_5",
+   "triton_poi_fused_add_native_layer_norm_6",
+   "extern:mm",
+   "triton_poi_fused_relu_threshold_backward_7",
+   "extern:mm",
+   "triton_poi_fused_add_8",
+   "triton_poi_fused_native_layer_norm_9",
+   "triton_poi_fused_native_layer_norm_10"
+  ],
+  "externs": 8,
+  "t_exec": 0.31,
+  "mem_errors": 0,
+  "ac": 0,
+  "n_out": 64,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {
+     "overflow": 64,
+     "div-by-zero": 64
+    },
+    "spec": {
+     "overflow": 64,
+     "div-by-zero": 64
+    }
+   },
+   "10": {
+    "kernel": {
+     "overflow": 64,
+     "div-by-zero": 64,
+     "underflow": 64
+    },
+    "spec": {
+     "overflow": 64,
+     "div-by-zero": 64,
+     "underflow": 64
+    }
+   }
+  },
+  "pre_worse": false,
+  "volta_secs": 19.148,
+  "verdict": "UNKNOWN",
+  "reason": "error: Budget { limit: 500000000 }"
+ },
+ {
+  "name": "Mish",
+  "repo": "AnikinNN/AI-58",
+  "i": 32,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 5.960464477539063e-08,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_poi_fused_mul_softplus_tanh_0"
+  ],
+  "externs": 0,
+  "verdict": "KERNEL-UNSUPPORTED",
+  "reason": "select on a symbolic comparison that is not a max/min pattern (ogt): cmp(in0[0], 20.0) ? in0[0] : log((1.0 + exp(in0[0])))"
+ },
+ {
+  "name": "SparseDownSampleClose",
+  "repo": "Anonymous1234321/GuideFormer",
+  "i": 33,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ],
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": false,
+  "max_abs_diff": 0.9250893592834473,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_poi_fused_max_pool2d_with_indices_mul_neg_rsub_sub_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.02,
+  "mem_errors": 0,
+  "verdict": "SPEC-UNSUPPORTED",
+  "reason": "max_pool2d"
+ },
+ {
+  "name": "ScalarScaleBias",
+  "repo": "Ali-Homsi/githubrepo",
+  "i": 34,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 1.0,
+  "kernels": [
+   "triton_poi_fused_add_mul_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.0,
+  "mem_errors": 0,
+  "ac": 256,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "NormActivation",
+  "repo": "AnimeshSinha1309/qroute-router",
+  "i": 35,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 1.1920928955078125e-07,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_poi_fused_div_pow_sum_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.01,
+  "mem_errors": 0,
+  "ac": 256,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {
+     "div-by-zero": 256
+    },
+    "spec": {
+     "div-by-zero": 256
+    }
+   },
+   "10": {
+    "kernel": {
+     "div-by-zero": 256
+    },
+    "spec": {
+     "div-by-zero": 256
+    }
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "BertLayerNorm",
+  "repo": "Alwaysproblem/examples-1",
+  "i": 36,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 4.76837158203125e-07,
+  "nan": 0,
+  "launches": 2,
+  "param_max": 1.0,
+  "kernels": [
+   "triton_poi_fused_mean_sub_0",
+   "triton_poi_fused_add_div_mean_mul_pow_sqrt_1"
+  ],
+  "externs": 0,
+  "t_exec": 0.03,
+  "mem_errors": 0,
+  "ac": 256,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {
+     "overflow": 256,
+     "div-by-zero": 256
+    },
+    "spec": {
+     "overflow": 256,
+     "div-by-zero": 256
+    }
+   },
+   "10": {
+    "kernel": {
+     "overflow": 256,
+     "div-by-zero": 256
+    },
+    "spec": {
+     "overflow": 256,
+     "div-by-zero": 256
+    }
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "Upscale2d",
+  "repo": "AnimeshKoratana/blurryface",
+  "i": 37,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 0,
+  "launches": 1,
+  "param_max": 0.0,
+  "kernels": [
+   "triton_poi_fused_clone_0"
+  ],
+  "externs": 0,
+  "t_exec": 0.01,
+  "mem_errors": 0,
+  "ac": 1024,
+  "n_out": 1024,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "AdaIN",
+  "repo": "AnetaKaczynska/video-GAN",
+  "i": 38,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ],
+   [
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 3.5762786865234375e-07,
+  "nan": 0,
+  "launches": 2,
+  "param_max": 1.7066433429718018,
+  "kernels": [
+   "extern:mm",
+   "triton_per_fused_add_clamp_mean_mul_rsqrt_sub_0"
+  ],
+  "externs": 1,
+  "t_exec": 0.03,
+  "mem_errors": 0,
+  "ac": 256,
+  "n_out": 256,
+  "missing": 0,
+  "prec_min": "exact",
+  "pre": {
+   "1": {
+    "kernel": {},
+    "spec": {}
+   },
+   "10": {
+    "kernel": {},
+    "spec": {}
+   }
+  },
+  "pre_worse": false,
+  "verdict": "PASS",
+  "via": "AC"
+ },
+ {
+  "name": "maxout",
+  "repo": "Angelinaa/KOBE",
+  "i": 39,
+  "sd_missing": 0,
+  "in_shapes": [
+   [
+    4,
+    4,
+    4,
+    4
+   ]
+  ],
+  "det": true,
+  "tol": true,
+  "max_abs_diff": 0.0,
+  "nan": 0,
+  "launches": 2,
+  "param_max": 0.49706655740737915,
+  "kernels": [
+   "extern:addmm",
+   "triton_poi_fused_max_0"
+  ],
+  "externs": 1,
+  "verdict": "KERNEL-UNSUPPORTED",
+  "reason": "select on a symbolic comparison that is not a max/min pattern (oge): cmp(((in0[0]*p_linear.weight[0]) +, ((in0[0]*p_linear.weight[4]) +) ? 0 : 1"
+ }
+]

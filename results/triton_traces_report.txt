@@ -1,0 +1,45 @@
+LLM-generated Triton, judged with the three-stage value decision
+  stage 1  AC normal form (sums of products)
+  stage 2  Volta        (reals: polynomial + exponential identities)
+  stage 3  Z3 case split (piecewise: select / max / min / abs)
+
+  PASS                   83    53.2%
+  ERROR                  26    16.7%
+  UNKNOWN                19    12.2%
+  SPEC-UNSUPPORTED        8     5.1%
+  NO-MODEL                6     3.8%
+  FAIL                    6     3.8%
+  SPEC-ERROR              4     2.6%
+  NO-ENTRY                2     1.3%
+  ADAPTER                 1     0.6%
+  KERNEL-UNSUPPORTED      1     0.6%
+
+judged: 89/156 (57%)  [19 torch-tail, 7 reached case split]
+
+their label x our verdict
+   label=True  judge=PASS    82
+   label=True  judge=FAIL     4
+   label=False judge=FAIL     2
+   label=False judge=PASS     1
+
+*** label=correct, tol=PASS, D4=PASS, judge=FAIL : 4 ***
+   [ 42] BiasLayer              memory     GPU: 0.823
+   [ 66] ChannelRate            memory     GPU: 134.5
+   [ 97] Theta                  value      GPU: 3.272
+   [ 98] TLU                    memory     GPU: 0.823
+
+*** label=incorrect, judge=PASS : 1 ***
+
+why rows could not be judged
+     10  UNKNOWN              output produced by torch after the kernels (1 el
+      6  NO-MODEL             
+      6  ERROR                NotImplementedError: cf.cond_br   |cf.cond_br %0
+      3  SPEC-UNSUPPORTED     max_pool2d
+      3  ERROR                AssertionError: 
+      2  UNKNOWN              1 unprovable but numerically equal
+      2  ERROR                TypeError: triton_kernel_wrapper() takes 2 posit
+      2  NO-ENTRY             
+      1  ADAPTER              cannot bind wrapper parameter `weight1`
+      1  ERROR                NotImplementedError: arith.xori   |%load_mask_28
+      1  SPEC-UNSUPPORTED     norm(p!=2)
+      1  ERROR                NotImplementedError: scf.while   |%offset = scf.
