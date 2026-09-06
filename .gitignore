@@ -16,3 +16,15 @@ __pycache__/
 
 # third-party checkout fetched by setup.sh
 data/KBV/
+
+# raw console logs from a run; the artifacts are report.txt and verify.txt
+results/*.log
+results/*.done
+# superseded records, kept locally for the before/after comparison only
+
+# outreach drafts -- correspondence, not part of the artifact
+outbox/
+data/triton_multiturn.json
+# superseded run records, kept locally for before/after comparisons only
+data/archive/
+results/archive/

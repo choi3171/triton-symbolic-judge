@@ -20,6 +20,21 @@ if not os.path.exists("data/kernelbook_400.json"):
     keep = ["entry_point","module_name","python_code","triton_code","synthetic","repo_name"]
     json.dump([{k: r[k] for k in keep} for r in itertools.islice(ds, 400)],
               open("data/kernelbook_400.json","w"))
+if not os.path.exists("data/triton_multiturn.json"):
+    # the same author's MULTI-TURN traces: the model was told its kernel failed and
+    # tried again, up to four times.  `num_turns` is how much selection pressure a
+    # row survived, which is the closest thing to an adversary available without
+    # running RL -- see `multiturn.py`.
+    ds = load_dataset("ppbhatt500/kernelbook-triton-multiturn-reasoning-traces", split="train")
+    rows = []
+    for r in ds:
+        fr = r["final_result"] or {}
+        rows.append({"sample_key": r["sample_key"], "source": r["source"],
+                     "pytorch_code": r["pytorch_code"], "triton_code": r["final_triton_code"],
+                     "num_turns": r["num_turns"], "stop_reason": r["stop_reason"],
+                     "result_correctness": bool(fr.get("correctness")),
+                     "result_speedup": fr.get("speedup")})
+    json.dump(rows, open("data/triton_multiturn.json", "w"))
 if not os.path.exists("data/triton_traces.json"):
     ds = load_dataset("ppbhatt500/kernelbook-triton-reasoning-traces", split="train")
     keep = ["sample_key","source","level","name","problem_id","pytorch_code","triton_code",

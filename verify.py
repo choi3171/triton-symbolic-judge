@@ -9,7 +9,7 @@ is itself information, not a failure of the method.
     python3 verify.py          # fast set, ~3-4 min
     python3 verify.py --all    # + suite.py, scale to 128, attention L=64
 """
-import re, subprocess, sys, time
+import os, re, subprocess, sys, time
 
 ALL = "--all" in sys.argv
 CLAIMS = []   # (script, args, description, list of regexes that must all match, tag)
@@ -52,8 +52,8 @@ claim("tf32.py", "input_precision=tf32 is a permission: ignored on sm_75, bitwis
       tag="sm_75")
 claim("difftest_mm.py", "whole-kernel: semantics and GPU are equally far from float64",
       [r"max \|semantics - float64\|\s+3\.545e-06", r"max \|gpu\s+- float64\|\s+3\.545e-06"], tag="sm_75")
-claim("semantics.py", "19 decisions, none open",
-      [r"19 semantic decisions over 26 core ops", r"\[open\]\s+0", r"\[measured\]\s+5"])
+claim("semantics.py", "20 decisions, none open",
+      [r"20 semantic decisions over 26 core ops", r"\[open\]\s+0", r"\[measured\]\s+5"])
 
 # --- Volta decision procedure ------------------------------------------------
 claim("volta_check.py", "Volta bridge: 7/7 identities; softmax naive==safe 16/16 and 128/128",
@@ -82,11 +82,13 @@ claim("capture_test.py", "judging by intercepting real GPU launches: mm_tiled, s
       [r"mm_tiled via launch\(\).*\n.*Volta 1024/1024  missing 0  mem-errors 0",
        r"mm_splitk via launch\(\).*grid=\(2, 2, 2\).*\n.*Volta 1024/1024  missing 0",
        r"attn_flash via launch\(\).*\n.*Volta 512/512  missing 0"], tag="sm_75")
-claim("kernelbook_run.py", "KernelBook rows 0-40: >=24 PASS all with tol=True; FAILs carry numeric witnesses; kernel never worse than spec on preconditions",
-      [r"'PASS': (2[4-9]|3\d)", r"\(True, 'PASS'\): (2[4-9]|3\d)", r"witness at random point"], args=("0", "40"), tag="sm_75")
+claim("kernelbook_run.py", "KernelBook rows 0-40: >=28 PASS all with tol=True; every value FAIL carries a numeric witness the GPU then reproduces",
+      [r"'PASS': (2[89]|3\d)", r"\(True, 'PASS'\): (2[89]|3\d)",
+       r"outputs differ; witness spec=\S+ kernel=\S+; GPU reproduces at"], args=("0", "40"), tag="sm_75")
 
 claim("kernelbook_run.py", "KernelBook row 17: judge FAILs with a numeric witness where the dataset's tolerance test is vacuous (uninitialised params)",
-      [r"\[ 17\] FAIL .*DEGEN.*GatSymAttention .*witness at random point"], args=("--rows", "17"), tag="sm_75")
+      [r"\[ 17\] FAIL\s+tol=True.*DEGEN\s+GatSymAttention\s+\d+ outputs differ; witness spec=\S+ kernel=\S+; GPU reproduces at"],
+      args=("--rows", "17"), tag="sm_75")
 
 claim("kb_critic.py", "KernelBook row 308: judge's FAIL attributed exactly -- wrapper permutes same-shaped tensors; tolerance test hides a 190% relative error behind atol",
       [r"cat\(\[W2,state\]\) @ \.\.\. @ action\.T \|  = 0\b", r"relative error 19\d%",
@@ -96,11 +98,50 @@ claim("reward_hack_lit.py", "documented reward hacks: Sakana's stale-buffer reus
       [r"matmul: reuse stale output buf\s+Sakana\s+PASS\s+PASS\s+\S+\s+FAIL \(reads unwritten",
        r"ReLU: shape-specialised identity\s+KBV/GPT5\.5\s+PASS\s+fail\s+\S+\s+pass\s+FAIL \(witness",
        r"ReLU: python-level shape check\s+KBV/GPT5\.5\s+PASS\s+fail.*FAIL \(0 kernels launched\)",
-       r"Score on documented hacks: 1 uniquely caught"], tag="sm_75")
-claim("reward_hack_lit.py", "honest negative: unstable variance is NOT caught -- equal over the reals, and the precondition FAIL is a false positive",
-      [r"variance: E\[X\^2\]-E\[X\]\^2\s+KBV\s+PASS\s+PASS\s+\S+\s+pass\s+pass\s+pass\s+FAIL\[false \+ve\]",
-       r"NOT CAUGHT\. value=pass is correct",
+       r"Score on documented hacks: 2 uniquely caught"], tag="sm_75")
+claim("reward_hack_lit.py", "unstable variance: equal over the reals (value=pass is CORRECT) and the precondition FAIL is a false positive -- caught only by the accuracy obligation it created",
+      [r"variance: E\[X\^2\]-E\[X\]\^2\s+KBV\s+PASS\s+PASS\s+\S+\s+pass\s+pass\s+pass\s+FAIL\[false \+ve\]\s+FAIL \(shift",
+       r"CAUGHT BY THE ACCURACY OBLIGATION, and by nothing else here",
        r"product: early exit on a zero.*\n.*REFUSED|REFUSED \(Unsupported\)"], tag="sm_75")
+
+# --- the reference itself ----------------------------------------------------
+# A wrong spec is the one failure mode nothing downstream can catch: it makes a
+# correct kernel FAIL and can make a wrong kernel PASS.  Three shipped bugs of
+# this shape (F.linear(bias=), mean(axis=), avg_pool2d's flag order, softplus'
+# dead threshold) are why these two run on every verification.
+claim("spec_sigcheck.py", "every spec handler agrees with torch: no swallowed, mis-positioned, or declared-and-unread argument",
+      [r"0 disagreement\(s\): 0 silent \(0 mis-positioned, 0 swallowed, 0 dead\)"])
+claim("spec_agree.py", "the spec front-end computes what torch computes: 103 cases including the full pooling flag sweep, plus 3 modes it must refuse",
+      [r"103/103 handlers agree with torch", r"3/3 refusals as expected", r"avg_pool2d k3 s2 p1 ceil=True cip=False.*ok",
+       r"var\(dim, unbiased=False\).*ok", r"adaptive_avg_pool2d -> 3.*ok"])
+
+claim("delegate_test.py", "delegated library ops: the two spellings share a symbol, nothing else does, small operands are untouched, and a pair the shortcut cannot settle is expanded rather than reported",
+      [r"15/15 delegation properties hold",
+       r"COMPLETE  F\.linear\(x,w,b\) == addmm\(b,x,w_t\).*identical terms",
+       r"SOUND     a different operand gives a different symbol",
+       r"INERT     below the threshold nothing is delegated",
+       r"FALLBACK  two symbols that differ are cashed in.*Volta proves equal",
+       r"FALLBACK  expansion is refused above the budget"])
+claim("op_coverage.py", "the corpora's 556 reference modules use 130 distinct ops in forward; 50 cover three quarters of them",
+      [r"556 reference modules, 130 distinct ops", r"\s+50\s+413\s+74\.3%"])
+claim("undecided.py", "the pairs neither Volta nor Z3 separates are a 5-second budget, not a gap between the two procedures",
+      [r"BCE-with-logits.*\s+4\s+0\s+0\s+1\s+equal",
+       r"Mish: both sides carry the threshold\s+256\s+256"])
+claim("kb_blindspot.py", "KernelBench's own correctness loop builds the model once, so a kernel that ignores a parameter whose default is the identity element is bit-identical to the reference",
+      [r"KernelBench's own check .*PASSES\s+max diff 0",
+       r"parameters redrawn each trial:\s+FAILS\s+max diff"], tag="sm_75")
+claim("harness_fixes.py", "honest counterpoint: how much of this a cheap harness stops on its own, with no symbolic machinery",
+      [r"poisoned with NaN before the trial: False -> tolerance test PASSES",
+       r"poisoned with NaN before the trial: True  -> tolerance test FAILS",
+       r"the honest kernel still passes under poisoning: True"], tag="sm_75")
+claim("testgen_validate.py", "an axis generalises where a point does not: two directives, each derived from one exploit, catch all 7 -- and the corpus' own check catches none of them",
+      [r"7/7 exploits caught by two directives",
+       r"-> 4/4 caught by one directive", r"-> 3/3 caught by one directive",
+       r"42\s+BiasLayer\s+passes\s+CAUGHT\s+unseen",
+       r"114\s+GatedTanhUnit\s+passes\s+CAUGHT\s+unseen"], tag="sm_75")
+claim("accuracy_test.py", "the accuracy obligation fires on cancellation and stays silent on mere reassociation",
+      [r"unstable variance\s+worse\s+worse", r"stable variance \(reverse\)\s+pass\s+pass",
+       r"3\*sum vs sum of 3\*x\s+pass\s+pass", r"5/5 accuracy verdicts as expected"])
 
 # --- precondition layer ------------------------------------------------------
 claim("precond2.py", "float-validity preconditions: naive softmax |x|<=86.64, safe softmax unbounded; naive attention overflows at |q|,|k|<=10",
@@ -111,9 +152,21 @@ claim("precond2.py", "float-validity preconditions: naive softmax |x|<=86.64, sa
        r"attn_safe\s+inputs in \[-10,10\]:\s+underflow x512\n",
        r"attn_flash\s+inputs in \[-10,10\]:\s+underflow x512\n"])
 
+# Scripts live in packages now (tvj/checks/check.py, ...), but a claim still names
+# the file, because that is what a reader looks for.  Resolve the name to a module
+# path once and run it with -m, so the working directory stays the repo root and
+# every `data/...` path in the scripts keeps meaning what it meant.
+MODULE = {}
+for _root, _dirs, _files in os.walk("tvj"):
+    for _f in _files:
+        if _f.endswith(".py") and _f != "__init__.py":
+            MODULE[_f] = os.path.join(_root, _f)[:-3].replace(os.sep, ".")
+
+
 def run(script, args):
     t0 = time.time()
-    p = subprocess.run([sys.executable, "-u", script, *args], capture_output=True, text=True, timeout=3600)
+    target = ["-m", MODULE[script]] if script in MODULE else [script]
+    p = subprocess.run([sys.executable, "-u", *target, *args], capture_output=True, text=True, timeout=3600)
     out = p.stdout + p.stderr
     out = "\n".join(l for l in out.split("\n") if not re.search(r"warning:|note:|\^~|In file|^\s*\d+ \|", l))
     return out, time.time() - t0

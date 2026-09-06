@@ -1,9 +1,26 @@
 #!/bin/sh
-# after the 40-400 run: re-judge every non-PASS row with the current front-end, then report
-cd /home/naana/triton_function_correctness/tv
-ROWS=$(python3 -c "
-import json; r=json.load(open('data/kb_40_360.json')); print(','.join(str(x['i']) for x in r if x['verdict'] not in ('PASS','TIMEOUT')))")
-echo "re-judging $(echo $ROWS | tr ',' '\n' | wc -l) rows"
-python3 -u kernelbook_run.py --rows $ROWS > data/kb_rejudge.log 2>&1
-python3 kb_report.py > data/kb_report.txt 2>&1
+# Re-judge every row the last full run could not decide, with the current
+# front-end, then regenerate both reports.  Rows are keyed by index and the
+# report takes the latest record for each, so a re-judge overrides in place.
+cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+KB=$(python3 -c "
+import json
+rs = {}
+for l in open('data/kb_live.jsonl'):
+    r = json.loads(l); rs[r['i']] = r
+print(','.join(str(i) for i, r in sorted(rs.items()) if r['verdict'] not in ('PASS', 'FAIL')))")
+echo "re-judging $(echo $KB | tr ',' '\n' | wc -l) KernelBook rows"
+python3 -u -m tvj.judge.kernelbook_run --rows "$KB" > results/kb_rejudge.log 2>&1
+
+TR=$(python3 -c "
+import json, os
+rs = {}
+p = 'results/triton_traces.jsonl'
+for l in (open(p) if os.path.exists(p) else []):
+    r = json.loads(l); rs[r['i']] = r
+print(','.join(str(i) for i, r in sorted(rs.items()) if r['verdict'] not in ('PASS', 'FAIL')))")
+echo "re-judging $(echo $TR | tr ',' '\n' | wc -l) trace rows"
+python3 -u -m tvj.judge.traces_run --rows "$TR" > results/tr_rejudge.log 2>&1
+
+python3 -m tvj.judge.report both > results/report.txt 2>&1
 echo POSTRUN-DONE
