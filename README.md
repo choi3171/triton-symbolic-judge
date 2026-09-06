@@ -1,13 +1,72 @@
-# TTIR reference semantics + refinement checker (with Volta's decision procedure)
+# A symbolic judge for Triton kernels
 
-Triton IR의 안정된 코어 op들에 대한 **실행 가능한 참조 의미론**, 그 위의 bounded
-refinement 검사기, 값 동치는 **Volta**(Driscoll et al., OOPSLA'26)의 판정 절차를
-그대로 호출. GPU는 미분 테스트에만 필요하다.
+Compares a Triton kernel against its PyTorch reference **over symbolic inputs**
+instead of sampled ones, so a defect that hides outside the test distribution
+cannot hide from it. Built to ask whether LLM-generated GPU kernels that pass a
+tolerance test are actually correct.
 
 ```
-python3 verify.py            # 이 README와 대화의 모든 주장을 재실행해서 assert (~4분)
-python3 verify.py --all      # + suite / scale / attention L=64
+./setup.sh          # fetch Volta, KernelBench, the two corpora; build the bridge
+python3 verify.py   # re-runs every experiment behind every claim below (22/22, ~5 min)
 ```
+
+## What it found
+
+**Tolerance testing goes vacuous in at least three distinct ways**, each observed
+in a real corpus, none of them visible to the benchmark that was running:
+
+| mechanism | evidence |
+|---|---|
+| parameters left uninitialised — garbage compared against garbage | KernelBook row 17 |
+| output ~1e-4 under `atol=1e-3`, hiding a **191 % relative error** | KernelBook row 308 |
+| parameters default to the **identity element** of the op they feed (`bias=0`, `scale=1`, `tau=0`), so a kernel that ignores them is bit-identical | 5 LLM-generated kernels; and KernelBench's own level2/85 |
+
+The last one survives KernelBench-Verified's hardening. Its hidden tests vary the
+inputs four ways (as-is, ×3, ×0.01, negated) but build the model once, so a kernel
+with the scale multiply **deleted** passes all four at max diff exactly `0`
+(`kbv_blindspot.py`). Drawing the parameter at random finds it at once.
+
+**A counterexample yields an axis, not just a point.** The judge reports which
+named buffers a disagreement rests on, so `testgen.py` turns one exploit into a
+harness directive — *vary these parameters*, *poison this buffer*. Derived from a
+single kernel, it catches 3 of the 4 others it had never seen.
+
+**Corpus results.** Of the kernels these corpora label correct, the judge rejects
+6 — every one reproduced on the GPU before being counted:
+
+| corpus | judged | judge rejects a "correct" kernel |
+|---|---|---|
+| 400 Inductor-generated (KernelBook) | 60 % | 2 — both defects in the dataset's own wrapper, not in Inductor's codegen |
+| 156 LLM-generated Triton | 58 % | 4 |
+
+**Honest negatives are in `verify.py` too.** Catastrophic cancellation
+(`E[X²]−E[X]²`) is *not* caught: the two forms are equal over the reals, and the
+precondition failure we first reported for it was a false positive we retracted.
+
+## How
+
+Three obligations, not one. Value equality over the reals (AC normal form →
+[Volta](https://github.com/willtunnels/volta)'s decision procedure → Z3 case
+splitting for piecewise terms — the step Volta's paper says "could be handled by
+case splits" and declines to take). Precision as a directed lattice, because
+`ieee → tf32` is real-equal but not a refinement. And a float-validity
+precondition, because a real-number proof says nothing where an intermediate
+overflows.
+
+`PIPELINE.md` has the data flow. `semantics.py` is the artifact underneath it all:
+19 decisions the interpreter had to make because Triton does not answer them —
+what a masked lane loads, whether i32 index arithmetic wraps — each with its basis
+and its evidence, four of them measured against hardware.
+
+## Limits
+
+Judged coverage is ~60 %. Shapes are fixed and small; there is no data-dependent
+control flow; a FAIL on the value obligation is only believed if the GPU
+reproduces it at the witness point. All hardware measurements are `sm_75`.
+
+---
+
+*(아래는 한국어 상세 설명입니다.)*
 
 | 스크립트 | 무엇을 하나 |
 |---|---|
