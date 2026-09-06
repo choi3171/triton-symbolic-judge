@@ -50,6 +50,14 @@ by 0.09 to 134. Four ignore a module parameter entirely (`bias`, `rates`, `tau`,
 `layer1.bias`, all identity-element defaults); the fifth mishandles a pooling
 boundary. All five were reproduced on hardware before being counted.
 
+**Why one variant is worth adding rather than a list of cases.** The checker
+reports which named buffers a disagreement rests on, not just that one exists, so
+a counterexample yields an axis rather than a point. Deriving "vary the
+parameters" from a single one of the five kernels above and applying it to the
+other four catches three of them — kernels the checker had not looked at when the
+directive was written. A pinned input point would have closed one kernel; the
+axis closes the class.
+
 **Suggested addition.** A fifth variant that redraws parameters rather than
 scaling inputs — re-instantiate under the trial seed and copy the state dict into
 both models so they stay in step. That is what turns the example above from
