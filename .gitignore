@@ -1,0 +1,15 @@
+# Rust build output (240 MB)
+bridge/target/
+# generated per-row module files, rewritten on every run
+data/kb_mods/
+data/tr_mods/
+# third-party checkouts, cloned by setup.sh
+data/KernelBench/
+# corpora downloaded from HuggingFace, fetched by setup.sh
+data/kernelbook_400.json
+data/triton_traces.json
+# intermediate per-run records; results/ holds the ones worth keeping
+data/kb_*.json
+data/kb_*.jsonl
+__pycache__/
+*.pyc
