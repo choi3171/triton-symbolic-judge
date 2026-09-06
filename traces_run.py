@@ -121,6 +121,24 @@ def gpu_confirm(model, entry, mk_inputs, trials=3, seed=0, dists=("signed", "pos
         if valid: break
     return (worst if valid else None), valid
 
+def diff_symbols(spec, kern):
+    """Which named buffers the disagreement rests on, split by side.
+
+    `only_spec` are inputs or parameters the reference uses and the kernel does
+    not -- the axes a test must vary.  `only_kern` names buffers the kernel reads
+    that the reference has no counterpart for: scratch nobody wrote."""
+    def syms(ts):
+        acc, seen = set(), set()
+        def go(t):
+            if t is None or t.uid in seen: return
+            seen.add(t.uid)
+            if isinstance(t, T.Sym): acc.add(t.buf)
+            for a in getattr(t, "args", ()): go(a)
+        for t in ts: go(t)
+        return acc
+    a, b = syms(spec), syms(kern)
+    return sorted(a - b), sorted(b - a)
+
 def sym_domain(*term_lists):
     """Buffers referenced by ANY of these terms, sized to their largest index.
     The kernel's `bufsize` is not enough: the spec may name a parameter the
@@ -280,6 +298,8 @@ def judge_row(r, timeout=120):
             for a in getattr(t, "args", ()): scan(a)
         for t in kterms: scan(t)
         if unwritten:
+            rec["unwritten_buffers"] = sorted(unwritten)
+            rec["diff_symbols"] = {"only_spec": [], "only_kernel": sorted(unwritten)}
             return fail("memory", f"output depends on a buffer no launch wrote ({sorted(unwritten)[0]})")
 
         # symbolic_module replaces _parameters in place, which would make the
@@ -366,8 +386,11 @@ def judge_row(r, timeout=120):
                 bad = [(i, w) for i, w in zip(unproved, wit) if w[0] is False]
                 if bad:
                     i, (_, (s, va, vb)) = bad[0]
+                    only_spec, only_kern = diff_symbols([sf[i] for i, _ in bad], [kterms[i] for i, _ in bad])
+                    pt = wit_points[s] if s < len(wit_points) else None
                     return fail("value", f"{len(bad)} outputs differ; witness spec={va:.6g} kernel={vb:.6g}",
-                                point=wit_points[s] if s < len(wit_points) else None,
+                                point=pt, diff_symbols={"only_spec": only_spec, "only_kernel": only_kern},
+                                witness_point={k: v[:8] for k, v in (pt or {}).items()},
                                 witness={"n": len(bad), "spec": va, "kernel": vb})
                 rec["verdict"] = "UNKNOWN"; rec["reason"] = f"{len(unproved)} unprovable but numerically equal"; return rec
         # --- precision ---
