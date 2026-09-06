@@ -419,12 +419,24 @@ _TORCH = {
     "conv1d": lambda input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1: conv_nd(input, weight, bias, stride, padding, dilation, groups, 1),
     "conv3d": lambda input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1: conv_nd(input, weight, bias, stride, padding, dilation, groups, 3),
     "pad": pad, "binary_cross_entropy_with_logits": bce_with_logits,
-    "max_pool1d": lambda x, *a, **k: pool_nd(x, *a, nd=1, mode="max", **k),
-    "max_pool2d": lambda x, *a, **k: pool_nd(x, *a, nd=2, mode="max", **k),
-    "max_pool3d": lambda x, *a, **k: pool_nd(x, *a, nd=3, mode="max", **k),
-    "avg_pool1d": lambda x, *a, **k: pool_nd(x, *a, nd=1, mode="avg", **k),
-    "avg_pool2d": lambda x, *a, **k: pool_nd(x, *a, nd=2, mode="avg", **k),
-    "avg_pool3d": lambda x, *a, **k: pool_nd(x, *a, nd=3, mode="avg", **k),
+    "max_pool1d": lambda x, kernel_size, stride=None, padding=0, dilation=1,
+                           ceil_mode=False, return_indices=False:
+        pool_nd(x, kernel_size, stride, padding, nd=1, mode="max", ceil_mode=ceil_mode),
+    "max_pool2d": lambda x, kernel_size, stride=None, padding=0, dilation=1,
+                           ceil_mode=False, return_indices=False:
+        pool_nd(x, kernel_size, stride, padding, nd=2, mode="max", ceil_mode=ceil_mode),
+    "max_pool3d": lambda x, kernel_size, stride=None, padding=0, dilation=1,
+                           ceil_mode=False, return_indices=False:
+        pool_nd(x, kernel_size, stride, padding, nd=3, mode="max", ceil_mode=ceil_mode),
+    "avg_pool1d": lambda x, kernel_size, stride=None, padding=0, ceil_mode=False,
+                           count_include_pad=True, divisor_override=None:
+        pool_nd(x, kernel_size, stride, padding, nd=1, mode="avg", ceil_mode=ceil_mode),
+    "avg_pool2d": lambda x, kernel_size, stride=None, padding=0, ceil_mode=False,
+                           count_include_pad=True, divisor_override=None:
+        pool_nd(x, kernel_size, stride, padding, nd=2, mode="avg", ceil_mode=ceil_mode),
+    "avg_pool3d": lambda x, kernel_size, stride=None, padding=0, ceil_mode=False,
+                           count_include_pad=True, divisor_override=None:
+        pool_nd(x, kernel_size, stride, padding, nd=3, mode="avg", ceil_mode=ceil_mode),
     "adaptive_avg_pool1d": lambda x, o: adaptive_pool(x, o, 1, "avg"),
     "adaptive_avg_pool2d": lambda x, o: adaptive_pool(x, o, 2, "avg"),
     "adaptive_avg_pool3d": lambda x, o: adaptive_pool(x, o, 3, "avg"),
@@ -481,7 +493,7 @@ _TORCH = {
     "logical_not": lambda a: STensor(np.frompyfunc(lambda t: T.app("not", t), 1, 1)(_st(a).a)),
     "masked_fill": lambda x, mask, v: _st(mask).where(STensor.full(_st(x).shape, float(v)), x),
     "batch_norm": _unsupported("batch_norm"), "instance_norm": _unsupported("instance_norm"), "group_norm": _unsupported("group_norm"),
-    "max_pool2d": _unsupported("max_pool2d"), "avg_pool2d": _unsupported("avg_pool2d"), "interpolate": _unsupported("interpolate"),
+    "interpolate": _unsupported("interpolate"),
     "zeros_like": lambda x, **k: STensor.full(_st(x).shape, 0.0), "ones_like": lambda x, **k: STensor.full(_st(x).shape, 1.0),
     "full_like": lambda x, v, **k: STensor.full(_st(x).shape, float(v)),
     "unsqueeze": lambda x, d: _st(x).unsqueeze(d), "squeeze": lambda x, d=None: _st(x).squeeze(d),

@@ -65,6 +65,14 @@ def _f32(v):
     try: return _struct.unpack("f", _struct.pack("f", v))[0]
     except OverflowError: return float("inf") if v > 0 else float("-inf")
 def const(v): return _hc(Const(_f32(float(v))))
+
+def lift(v):
+    """A concrete number reaching a real-term constructor becomes a constant.
+
+    Integer-typed ops (math.absi, integer selects) can route a Python int into a
+    float path when the value is statically known; the term for it is that
+    constant.  Guarding here closes the whole class instead of every call site."""
+    return v if isinstance(v, Term) else const(v)
 def sym(buf, idx): return _hc(Sym(buf, idx))
 ZERO, ONE = const(0.0), const(1.0)
 TRUE, FALSE = _hc(App("true", ())), _hc(App("false", ()))
@@ -88,6 +96,7 @@ def _split_coeff(t):
     return 1.0, t
 
 def add(*terms):
+    terms = [lift(t) for t in terms]
     flat = []
     for t in terms:
         if isinstance(t, Add): flat.extend(t.args)
@@ -112,6 +121,7 @@ def add(*terms):
     return _hc(Add(out))
 
 def mul(*terms):
+    terms = [lift(t) for t in terms]
     flat = []
     for t in terms:
         if isinstance(t, Mul): flat.extend(t.args)
@@ -127,11 +137,13 @@ def mul(*terms):
     rest.sort(key=_sortkey)
     return _hc(Mul(rest))
 
-def sub(a, b):  return add(a, mul(const(-1.0), b))
+def sub(a, b):  return add(lift(a), mul(const(-1.0), lift(b)))
 def div(a, b):
+    a, b = lift(a), lift(b)
     if isinstance(b, Const) and b.v != 0.0: return mul(a, const(1.0 / b.v))
     return _hc(App("div", (a, b)))
 def select(c, a, b):
+    c, a, b = lift(c), lift(a), lift(b)
     """Piecewise value.  Not case-split: `select` is an uninterpreted 3-ary atom,
     exactly as Volta canonicalises it, so two piecewise kernels are equal when
     their conditions and branches are.  Concrete conditions fold."""
@@ -141,11 +153,13 @@ def select(c, a, b):
     return _hc(App("select", (c, a, b)))
 
 def cmp(kind, a, b):
+    a, b = lift(a), lift(b)
     if kind in ("eq", "le", "ge") and a is b: return TRUE
     if kind in ("ne", "lt", "gt") and a is b: return FALSE
     return _hc(App("cmp:" + kind, (a, b)))
 
 def app(fn, *args):
+    args = tuple(lift(a) for a in args)
     if fn == "max": args = tuple(a for a in args if not (isinstance(a, Const) and a.v == float("-inf"))) or (const(float("-inf")),)
     if fn == "min": args = tuple(a for a in args if not (isinstance(a, Const) and a.v == float("inf")))  or (const(float("inf")),)
     if fn in ("max", "min") and len(args) == 1: return args[0]

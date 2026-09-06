@@ -13,3 +13,6 @@ data/kb_*.json
 data/kb_*.jsonl
 __pycache__/
 *.pyc
+
+# third-party checkout fetched by setup.sh
+data/KBV/

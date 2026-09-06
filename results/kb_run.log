@@ -28,41 +28,29 @@
 [ 27] FAIL               tol=False(2e-02)             MaskedMSELoss              1 outputs differ: witness at random point 0: spec=-8.11927 kernel=131.744
 [ 28] PASS               tol=True         ext4        SimpleMLP                  Volta
 [ 29] PASS               tol=True         ext6        MultiHeadAttention         AC
-[ 30] ERROR              tol=True         ext5        Net                        AttributeError: 'int' object has no attribute 'uid'
-[ 31] UNKNOWN            tol=True         ext8        EncoderLayer               error: Budget { limit: 500000000 }
+[ 30] SPEC-ERROR         tol=True         ext5        Net                        Timeout: 
+[ 31] UNKNOWN            tol=True         ext8        EncoderLayer               error: Budget { limit: 200000000 }
 [ 32] UNKNOWN            tol=True                     Mish                       256 outputs not provably equal but numerically equal on 4 random points (max/min incompleteness?)
-[ 33] SPEC-UNSUPPORTED   tol=False(9e-01)             SparseDownSampleClose      max_pool2d
+[ 33] FAIL               tol=False(9e-01)             SparseDownSampleClose      256 outputs differ: witness at random point 0: spec=0.49827 kernel=-0.985631
 [ 34] PASS               tol=True                     ScalarScaleBias            AC
 [ 35] PASS               tol=True                     NormActivation             AC
 [ 36] PASS               tol=True                     BertLayerNorm              AC
 [ 37] PASS               tol=True                     Upscale2d                  AC
 [ 38] PASS               tol=True         ext1        AdaIN                      AC
-[ 39] ERROR              tol=True         ext1        maxout                     AttributeError: 'int' object has no attribute 'uid'
-[ 40] UNKNOWN            tol=True         ext14       DecoderLayer               error: Budget { limit: 500000000 }
+[ 39] KERNEL-UNSUPPORTED tol=True         ext1        maxout                     comparison on an integer loaded from memory
+[ 40] UNKNOWN            tol=True         ext14       DecoderLayer               error: Budget { limit: 200000000 }
 [ 41] PASS               tol=True         ext2        Joiner                     Volta
 [ 42] UNKNOWN            tol=True         DEGEN       NoiseLayer                 output depends on a buffer no launch wrote (tmp0): random or uninitialised memory
 [ 43] PASS               tol=True         ext2        resblock                   AC
 [ 44] TIMEOUT            tol=False(2e+00) ext2        PositionwiseFeedForward    
 [ 45] PASS               tol=True         ext3        SelfAttention              AC
 [ 46] PASS               tol=True         ext5        RelativeAttention          AC
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmpex4nkvja/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmpex4nkvja/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
 [ 47] FAIL               tol=False(2e+03)             GeometryFeature            768 outputs differ: witness at random point 0: spec=0.669829 kernel=0.772049
 [ 48] PASS               tol=True         ext2        group                      AC
 [ 49] PASS               tol=True         prec<f16    ToHalf                     AC
 [ 50] PASS               tol=True         ext1        mfm                        AC
 [ 51] PASS               tol=True         ext2        SimpleAttention            AC
-[ 52] SPEC-UNSUPPORTED   tol=True                     MultiLevelPooling          max_pool2d
+[ 52] PASS               tol=True                     MultiLevelPooling          AC
 [ 53] UNKNOWN            tol=True         ext1        Linear_soft_plus           256 outputs not provably equal but numerically equal on 4 random points (max/min incompleteness?)
 [ 54] SPEC-UNSUPPORTED   tol=True                     ContrastiveLoss            pairwise_distance
 [ 55] PASS               tol=True         ext1        Linear_tanh                AC
@@ -70,47 +58,22 @@ In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
 [ 57] FAIL               tol=False(1e-01) ext1        Conv2dBlock                12 outputs differ: witness at random point 0: spec=0 kernel=2.21574
 [ 58] PASS               tol=True         ext1        LinearBlock                Volta
 [ 59] PASS               tol=True         ext1        Linear_sigmoid             AC
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmpt2u_2qzt/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmpt2u_2qzt/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-[ 60] ERROR              tol=True         ext5        BiAttention                AttributeError: 'int' object has no attribute 'uid'
-[ 61] UNKNOWN            tol=False(3e-01) ext5        Attention                  error: Budget { limit: 500000000 }
-[ 62] SPEC-UNSUPPORTED   tol=True                     MaxPool2dDynamicSamePadding max_pool2d
+[ 60] KERNEL-UNSUPPORTED tol=True         ext5        BiAttention                comparison on an integer loaded from memory
+[ 61] UNKNOWN            tol=False(3e-01) ext5        Attention                  Volta exceeded its 4 GB cap on this pair
+[ 62] PASS               tol=True                     MaxPool2dDynamicSamePadding Volta
 [ 63] SPEC-UNSUPPORTED   tol=True                     GroupScaling1D             repeat_interleave
 <string>:71: FutureWarning: `nn.init.xavier_uniform` is now deprecated in favor of `nn.init.xavier_uniform_`.
 /home/naana/triton_function_correctness/tv/data/kb_mods/kb_64.py:212: FutureWarning: `nn.init.xavier_uniform` is now deprecated in favor of `nn.init.xavier_uniform_`.
   nn.init.xavier_uniform(self.weight)
-<string>:71: FutureWarning: `nn.init.xavier_uniform` is now deprecated in favor of `nn.init.xavier_uniform_`.
 [ 64] SPEC-UNSUPPORTED   tol=False(8e-01) ext1        adaModule                  unfold
 [ 65] PASS               tol=True                     SppPooling                 Volta
 [ 66] PASS               tol=True                     SurfaceLoss                AC
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmpy63gecfu/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmpy63gecfu/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
 [ 67] FAIL               tol=False(1e-01)             SmoothCrossEntropyLoss     1 outputs differ: witness at random point 0: spec=0.226274 kernel=-0.358684
 [ 68] PASS               tol=True                     LayerNorm                  AC
 [ 69] FAIL               tol=False(9e-01) ext1        Conv2dDynamicSamePadding   252 outputs differ: witness at random point 0: spec=-1.18845 kernel=0.399921
 [ 70] PASS               tol=True         ext1        CasualConv1d               AC
 [ 71] PASS               tol=True         ext2        DenseBlock                 AC
-[ 72] ERROR              tol=True         ext1        Block                      AttributeError: 'int' object has no attribute 'uid'
+[ 72] TIMEOUT            tol=True         ext1        Block                      
 [ 73] PASS               tol=True         ext1        Bc                         AC
 [ 74] FAIL               tol=False(9e-01) ext2        ATRCell                    16 outputs differ: witness at random point 0: spec=0.0153454 kernel=0.124543
 [ 75] PASS               tol=True         ext1        TimeEncode                 AC
@@ -124,7 +87,7 @@ In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
 [ 83] UNKNOWN            tol=True         ext2        ShakeResNet                output depends on a buffer no launch wrote (tmp1): random or uninitialised memory
 [ 84] TIMEOUT            tol=True         ext2        ShakeResNeXt               
 [ 85] PASS               tol=True                     Norm                       AC
-[ 86] ERROR              tol=True         ext1        ConvBlock                  AttributeError: 'int' object has no attribute 'uid'
+[ 86] SPEC-UNSUPPORTED   tol=True         ext1        ConvBlock                  batch_norm
 [ 87] PASS               tol=True                     L2                         AC
 [ 88] PASS               tol=True         ext3        MLP_multiple_class         Volta
 [ 89] PASS               tol=True                     L1                         AC
@@ -152,18 +115,6 @@ In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
 [111] PASS               tol=True         ext1        SelfAttentionPooling       AC
 [112] PASS               tol=True         ext3        AP                         Volta
 [113] PASS               tol=True         ext1        SAP                        AC
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmpmzguzs__/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmpmzguzs__/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
 [114] KERNEL-UNSUPPORTED tol=True         ext1        Upsample                   float->int conversion of a symbolic value
 [115] PASS               tol=True         ext1        BasicConv                  AC
 [116] UNKNOWN            tol=True         ext17       AttentionModuleV2          error: Budget { limit: 200000000 }
@@ -171,18 +122,6 @@ In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
 [118] PASS               tol=True                     Scale_and_shift            AC
 [119] PASS               tol=True         ext1        make_residual_dense_ver2   Volta
 [120] SPEC-ERROR         tol=True         ext6        DDPG                       Timeout: 
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmp6ncn3ler/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmp6ncn3ler/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
 [121] SPEC-ERROR         tol=True         ext2        Cell                       ValueError: operands could not be broadcast together with remapped shapes [original->remapped]: (5,2)  and requested shape (4,2)
 [122] KERNEL-UNSUPPORTED tol=False(8e-01) ext1        ResizeConv1d               float->int conversion of a symbolic value
 [123] UNKNOWN            tol=True                     Mish                       256 outputs not provably equal but numerically equal on 4 random points (max/min incompleteness?)
@@ -190,18 +129,6 @@ In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
 [125] TIMEOUT            tol=True         ext3        Policy_Net                 
 [126] PASS               tol=True         ext3        Value_Net                  Volta
 [127] PASS               tol=True         ext1        make_dense_LReLU           AC
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmp50vb2513/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmp50vb2513/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
 [128] PASS               tol=True         ext1        AmdimNCELoss               AC
 [129] PASS               tol=True         ext1        SpatialGate                AC
 [130] UNKNOWN            tol=False(4e-02) NONDET ext2 BayesLinear                output depends on a buffer no launch wrote (tmp3): random or uninitialised memory
@@ -218,484 +145,3 @@ In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
 [140] PASS               tol=True         ext1        SpatialAttention2d         AC
 [141] TIMEOUT            tol=True         ext3        Critic                     
 [142] PASS               tol=True                     GlobalMaxPool              AC
-[143] TIMEOUT            tol=True         ext4        Policy                     
-[144] ERROR              tol=None                     Delta                      ModuleNotFoundError: No module named 'torchaudio'
-[145] PASS               tol=True                     ScaledLeakyReLU            AC
-[146] PASS               tol=True                     HSwish                     AC
-[147] PASS               tol=True         ext2        SchedulerTestNet           Volta
-[148] PASS               tol=True         ext2        GAB                        Volta
-[149] PASS               tol=True                     CaffeNormalize             AC
-[150] PASS               tol=True         ext3        SCse                       Volta
-[151] PASS               tol=True                     ClippedReLU                AC
-[152] PASS               tol=True                     Rosenbrock                 AC
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmpdginfkx1/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmpdginfkx1/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-[153] SPEC-UNSUPPORTED   tol=False(1e+00) ext3        FakeRKHSConvNet            batch_norm
-[154] PASS               tol=True                     LayerNorm                  AC
-[155] UNKNOWN            tol=True         DEGEN       NoiseInjection             output depends on a buffer no launch wrote (tmp0): random or uninitialised memory
-[156] PASS               tol=True         ext1        EqualConv2d                AC
-[157] SPEC-UNSUPPORTED   tol=False(2e-01)             InputInjection             avg_pool2d
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmpo817ey62/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmpo817ey62/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-[158] SPEC-UNSUPPORTED   tol=False(2e+01) NONDET      NormalProposal             broadcast_tensors
-[159] TIMEOUT            tol=False(2e-02) NONDET ext4 Discriminator              
-[160] SPEC-ERROR         tol=True         ext3        DDPGActorVersion1          SystemError: <function _sortkey at 0x75a984d5e700> returned a result with an exception set
-[161] PASS               tol=True         ext1        ExampleBackbone            AC
-[162] SPEC-UNSUPPORTED   tol=True         ext1        ConvRelu                   prelu
-[163] UNKNOWN            tol=False(3e+00) NONDET      NormalSamples              output depends on a buffer no launch wrote (out): random or uninitialised memory
-[164] SPEC-UNSUPPORTED   tol=True         ext2        Gblock                     prelu
-[165] PASS               tol=True         ext1        EqualLinear                AC
-[166] PASS               tol=True         ext1        NodeAdaptiveEncoder        Volta
-[167] SPEC-UNSUPPORTED   tol=True                     PPMConcat                  adaptive_avg_pool2d (ragged)
-[168] PASS               tol=True         ext6        Deep_Neural_Network        AC
-[169] PASS               tol=True         ext3        MADDPGActorVersion1        Volta
-[170] PASS               tol=True         ext2        ModulatedConv2d            AC
-[171] PASS               tol=True         ext3        Linear                     AC
-[172] PASS               tol=True         ext3        DDPGCriticVersion1         Volta
-[173] PASS               tol=True         ext2        ToRGB                      AC
-[174] UNKNOWN            tol=True         ext4        Neural_Net                 Volta exceeded its 4 GB cap on this pair
-[175] FAIL               tol=False(4e-03)             FocalLossBinary            1 outputs differ: witness at random point 0: spec=0.248721 kernel=0.239519
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmppoi1vld4/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmppoi1vld4/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-[176] TIMEOUT            tol=True         ext13       Vgg16                      
-[177] UNKNOWN            tol=True         ext6        Dueling_QNetwork           error: Budget { limit: 200000000 }
-[178] PASS               tol=True         ext1        NAC                        AC
-[179] SPEC-ERROR         tol=False(7e-01) ext2        AttwNetHead                AttributeError: 'STensor' object has no attribute 'bool'
-[180] KERNEL-UNSUPPORTED tol=True                     Embeddings                 float->int conversion of a symbolic value
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmpporiu7an/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmpporiu7an/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmphdocoesy/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmphdocoesy/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-[181] SPEC-UNSUPPORTED   tol=False(2e+00) ext4        ConvBlockINEDense          pad(mode=circular)
-[182] PASS               tol=True         ext3        Net                        Volta
-[183] PASS               tol=True         ext3        HadamardProduct            Volta
-[184] PASS               tol=True         ext3        Classifier                 AC
-[185] PASS               tol=True         ext2        LCCALayer                  Volta
-[186] PASS               tol=True         ext1        Generator                  AC
-[187] PASS               tol=True                     BDiceLoss                  AC
-[188] UNKNOWN            tol=True                     BCELoss2c                  1 outputs not provably equal but numerically equal on 4 random points (max/min incompleteness?)
-[189] UNKNOWN            tol=True                     BCELoss                    1 outputs not provably equal but numerically equal on 4 random points (max/min incompleteness?)
-[190] PASS               tol=True         ext3        NALU                       AC
-[191] PASS               tol=True                     WeightedBDiceLoss          AC
-[192] SPEC-ERROR         tol=True                     DiceLoss                   TypeError: Input type is not a torch.Tensor. Got <class 'spec.STensor'>
-[193] PASS               tol=True                     StableBCELoss              AC
-[194] TIMEOUT            tol=False(6e-02) ext4        MultiHeadAttention         
-[195] PASS               tol=True                     MSELoss                    AC
-[196] ERROR              tol=False(9e-03) ext5        MutiLevelEnhance           KeyError: 'p_v_lin.weight'
-[197] SPEC-ERROR         tol=False(2e+00)             GDL                        shape mismatch spec () vs out (4, 4, 4, 4)
-[198] SPEC-ERROR         tol=True                     Dice                       TypeError: Input type is not a torch.Tensor. Got <class 'spec.STensor'>
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmp4bjmuokh/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmp4bjmuokh/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-[199] SPEC-UNSUPPORTED   tol=False(4e+00) ext6        SDNE_layer                 trace
-[200] PASS               tol=True                     WeightedMCEloss            AC
-[201] PASS               tol=True                     SkipConnection             AC
-[202] SPEC-UNSUPPORTED   tol=True                     AvgPoolPad                 avg_pool2d
-[203] PASS               tol=True         ext1        conv2                      AC
-[204] SPEC-UNSUPPORTED   tol=True         ext5        MultiHeadAttn              einsum
-[205] PASS               tol=True                     MCCLoss                    AC
-[206] ERROR              tol=True         ext2        Coder                      AttributeError: 'int' object has no attribute 'uid'
-[207] PASS               tol=True         ext2        ConvRelu2                  Volta
-[208] ERROR              tol=False(2e-01)             WeightedCrossEntropyLoss   AttributeError: 'int' object has no attribute 'uid'
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmp8xw3gs80/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmp8xw3gs80/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-[209] UNKNOWN            tol=True                     WeightedBCELoss            1 outputs not provably equal but numerically equal on 4 random points (max/min incompleteness?)
-[210] SPEC-UNSUPPORTED   tol=True                     MaxPoolPad                 max_pool2d
-[211] SPEC-ERROR         tol=False(2e+00)             SoftDiceLossSquared        shape mismatch spec () vs out (4, 4, 4, 4)
-[212] PASS               tol=True                     ClipGlobalAvgPool          AC
-[213] UNKNOWN            tol=True                     Shifted_softplus           256 outputs not provably equal but numerically equal on 4 random points (max/min incompleteness?)
-[214] PASS               tol=True                     Custom_dropout             AC
-[215] PASS               tol=True                     AdaptiveAvgMaxPool         Volta
-[216] SPEC-ERROR         tol=True                     MSEDICELoss                TypeError: Input type is not a torch.Tensor. Got <class 'spec.STensor'>
-[217] PASS               tol=True         ext1        AnyHead                    Volta
-[218] PASS               tol=True                     ScaleNorm                  AC
-[219] PASS               tol=True         ext2        _Residual_Block_SR         AC
-[220] PASS               tol=True         ext2        _Residual_Block_DB         Volta
-[221] PASS               tol=True                     GELU                       AC
-[222] UNKNOWN            tol=True                     GeneralizedMeanPooling     Volta has no interpretation for `pow`
-[223] PASS               tol=True         ext2        Net                        Volta
-[224] TIMEOUT            tol=True         ext3        Critic                     
-[225] PASS               tol=True         DEGEN       TLU                        AC
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmpc1hi3niu/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmpc1hi3niu/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-[226] SPEC-ERROR         tol=True                     MDiceLoss                  TypeError: Input type is not a torch.Tensor. Got <class 'spec.STensor'>
-[227] PASS               tol=True         ext3        MuNet                      Volta
-[228] UNKNOWN            tol=True         ext1        Atom_Wise_Convolution      256 outputs not provably equal but numerically equal on 4 random points (max/min incompleteness?)
-[229] PASS               tol=True                     rSoftMax                   AC
-[230] PASS               tol=True                     Hardswish                  AC
-[231] SPEC-ERROR         tol=False(2e-01) ext4        SelfAttention              AttributeError: 'STensor' object has no attribute 'is_nested'
-[232] PASS               tol=True                     Contract                   AC
-[233] TIMEOUT            tol=False(1e-01) ext2        GroverAttention            
-[234] PASS               tol=True                     RSoftmax                   AC
-[235] TIMEOUT            tol=True         ext11       AttentionNet               
-[236] PASS               tol=True                     MyUpsample2                AC
-[237] SPEC-UNSUPPORTED   tol=True         ext2        SqueezeExcitation          hardsigmoid
-[238] PASS               tol=True                     Expand                     AC
-[239] TIMEOUT            tol=True         ext3        Actor                      
-[240] PASS               tol=True         DEGEN       L2Norm                     AC
-[241] PASS               tol=True         ext4        duelingdqnNet              Volta
-[242] PASS               tol=True                     Reorg                      AC
-[243] PASS               tol=True         ext1        CausalConv1d               AC
-[244] PASS               tol=True                     Sum                        AC
-[245] PASS               tol=True         ext3        BPNet                      Volta
-[246] FAIL               tol=False(1e-02)             BCEBlurWithLogitsLoss      1 outputs differ: witness at random point 0: spec=-17676.4 kernel=-24975.8
-[247] PASS               tol=True         ext2        SELayer                    Volta
-[248] ERROR              tol=False(3e+02)             GHMC                       TypeError: float() argument must be a string or a real number, not 'Pred'
-[249] PASS               tol=True         ext1        Classify                   Volta
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmppe_384f1/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmppe_384f1/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-[250] SPEC-UNSUPPORTED   tol=False(2e+00) ext15       PetarVGAT                  elu
-[251] PASS               tol=True                     ZeroPad1d                  AC
-[252] PASS               tol=True         ext1        Conv2d                     Volta
-[253] SPEC-UNSUPPORTED   tol=True                     Fp32GroupNorm              group_norm
-[254] SPEC-UNSUPPORTED   tol=True                     MaxPoolStride1             pad(mode=replicate)
-[255] SPEC-UNSUPPORTED   tol=True                     GlobalAvgPool2d            avg_pool2d
-[256] SPEC-ERROR         tol=True         ext2        DilatedResConv             ValueError: operands could not be broadcast together with remapped shapes [original->remapped]: (3,2)  and requested shape (2,2)
-[257] KERNEL-UNSUPPORTED tol=True                     ClippedLinearQuantization  libdevice `__nv_nearbyintf` has no interpretation over the reals
-[258] FAIL               tol=False(2e-02) ext2        BahdanauAttention          16 outputs differ: witness at random point 0: spec=0.6141 kernel=0.491693
-[259] SPEC-UNSUPPORTED   tol=True                     MaxPool2dStaticSamePadding max_pool2d
-[260] KERNEL-UNSUPPORTED tol=True                     PSNRLoss                   libdevice `__nv_log10f` has no interpretation over the reals
-[261] SPEC-ERROR         tol=True                     RgbaToBgr                  TypeError: Input type is not a torch.Tensor. Got <class 'spec.STensor'>
-[262] SPEC-ERROR         tol=False(1e+02)             GHMR                       TypeError: '>' not supported between instances of 'float' and 'Add'
-[263] PASS               tol=True                     Rot180                     AC
-[264] PASS               tol=True         ext3        SplAtConv2d                Volta
-[265] PASS               tol=True         ext1        RobertaMaskLeanerHead      AC
-[266] SPEC-ERROR         tol=True                     ExtractTensorPatches       TypeError: Input input type is not a torch.Tensor. Got <class 'spec.STensor'>
-[267] PASS               tol=True                     Hflip                      AC
-[268] SPEC-ERROR         tol=True                     InverseDepthSmoothnessLoss TypeError: Input idepth type is not a torch.Tensor. Got <class 'spec.STensor'>
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmpaya97b42/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmpaya97b42/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-[269] SPEC-UNSUPPORTED   tol=True         ext8        NCutLossOptimized          unfold
-[270] SPEC-ERROR         tol=True                     RgbaToRgb                  TypeError: Input type is not a torch.Tensor. Got <class 'spec.STensor'>
-[271] PASS               tol=True                     MomentumNetSide            AC
-[272] SPEC-ERROR         tol=True                     BinaryFocalLossWithLogits  TypeError: Input type is not a torch.Tensor. Got <class 'spec.STensor'>
-[273] SPEC-ERROR         tol=True                     TotalVariation             TypeError: Input type is not a torch.Tensor. Got <class 'spec.STensor'>
-[274] PASS               tol=True                     Vflip                      AC
-[275] PASS               tol=True                     MSE                        AC
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmp67ej33ch/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmp67ej33ch/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-[276] SPEC-UNSUPPORTED   tol=True         ext1        DiffLoss                   mean(...keepdims=)
-[277] PASS               tol=True                     Fp32LayerNorm              AC
-[278] PASS               tol=True                     ConcatenateChannels        AC
-[279] PASS               tol=True                     SplitChannels              AC
-[280] PASS               tol=True         ext1        SpatialAttention           AC
-[281] PASS               tol=True                     InvDepth                   AC
-[282] PASS               tol=True         ext1        DummyModel                 AC
-[283] ERROR              tol=True         ext5        Simplenet                  AttributeError: 'int' object has no attribute 'uid'
-[284] SPEC-UNSUPPORTED   tol=True         DEGEN ext1  InvConv                    slogdet
-[285] SPEC-UNSUPPORTED   tol=False(2e-02)             PixWiseBCELoss             binary_cross_entropy
-[286] PASS               tol=True                     SIMSE                      AC
-[287] FAIL               tol=False(6e-01) ext3        Attention                  64 outputs differ: witness at random point 0: spec=-1.08295 kernel=0.306782
-[288] PASS               tol=True                     Gate                       AC
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmpdrf6wh9m/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmpdrf6wh9m/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-[289] PASS               tol=True         ext6        Block                      AC
-[290] ERROR              tol=True         ext1        ConvBlock                  AttributeError: 'int' object has no attribute 'uid'
-[291] PASS               tol=True                     MultiplicationInverse      AC
-[292] KERNEL-UNSUPPORTED tol=True                     CrossEntropyLossTF         comparison on an integer loaded from memory
-[293] PASS               tol=True         ext1        SSE                        AC
-[294] PASS               tol=True                     ExpNormalBasis             AC
-[295] SPEC-ERROR         tol=True                     CosineEnvelope             IndexError: only integers, slices (`:`), ellipsis (`...`), numpy.newaxis (`None`) and integer or boolean arrays are valid indices
-[296] PASS               tol=True         ext1        Conv2d                     Volta
-[297] PASS               tol=True         ext6        MultiHeadedAttention       AC
-[298] SPEC-ERROR         tol=True                     PainnRadialBasis           TypeError: where() received an invalid combination of arguments - got (bool, Tensor, STensor), but expected one of:
- * (Tensor cond
-[299] TIMEOUT            tol=True         ext5        Net                        
-[300] PASS               tol=True         ext6        MultiHeadAttention         AC
-[301] PASS               tol=True                     Sine                       AC
-[302] FAIL               tol=False(7e-01) ext1        CatConv                    256 outputs differ: witness at random point 0: spec=3.01236 kernel=1.5892
-[303] PASS               tol=True                     GELU                       AC
-[304] PASS               tol=True         ext3        Adv                        AC
-[305] PASS               tol=True         ext2        ScaledDotProduct           AC
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmp1dw4ejhr/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmp1dw4ejhr/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-[306] UNKNOWN            tol=False(2e-02) ext3        Block                      Volta has no interpretation for `erf`
-<string>:22: UserWarning: Implicit dimension choice for log_softmax has been deprecated. Change the call to include dim=X as an argument.
-[307] ERROR              tol=True         ext4        Net                        AttributeError: 'int' object has no attribute 'uid'
-[308] FAIL               tol=True         ext3        Critic                     4 outputs differ: witness at random point 0: spec=1.36083 kernel=-1.30098
-[309] PASS               tol=True         ext3        Policy                     AC
-[310] UNKNOWN            tol=True         ext6        PMA                        error: Budget { limit: 200000000 }
-[311] PASS               tol=True         ext7        BatchedVectorAttention     AC
-[312] PASS               tol=True                     CReLU                      Volta
-[313] SPEC-UNSUPPORTED   tol=True                     PaddedMaxPool2d            pad(mode=replicate)
-[314] PASS               tol=True         ext4        UnpoolingAsConvolution     AC
-[315] PASS               tol=True                     PLU                        AC
-[316] PASS               tol=True                     HLoss                      AC
-[317] PASS               tol=True                     TripletLoss                Volta
-[318] UNKNOWN            tol=True         ext6        MAB                        error: Budget { limit: 200000000 }
-[319] PASS               tol=True                     L2Norm                     AC
-[320] FAIL               tol=False(1e+00) ext4        GCN                        16 outputs differ: witness at random point 0: spec=0.884432 kernel=0.268494
-[321] PASS               tol=True                     Reorg                      AC
-[322] PASS               tol=True         ext3        ValueNetwork               Volta
-[323] PASS               tol=True                     ScaleReLU                  Volta
-[324] PASS               tol=True                     ContrastiveLoss            Volta
-[325] PASS               tol=True                     HLoss                      AC
-[326] PASS               tol=True                     Entropy_loss               AC
-[327] PASS               tol=True                     SPU                        AC
-[328] UNKNOWN            tol=True         ext6        SAB                        error: Budget { limit: 200000000 }
-[329] FAIL               tol=False(1e+00) ext6        QNetwork                   4 outputs differ: witness at random point 0: spec=0.249766 kernel=-1.30098
-[330] TIMEOUT            tol=True         ext3        GameNet                    
-[331] PASS               tol=True                     PPReLU                     AC
-[332] SPEC-UNSUPPORTED   tol=True                     ImageLevelFeaturePooling2D interpolate
-[333] TIMEOUT            tol=True         ext3        SRCNN                      
-[334] SPEC-UNSUPPORTED   tol=False(2e+00) ext2 nan2048 ConditionalBatchNorm2d     batch_norm
-[335] TIMEOUT            tol=True         ext6        Critic                     
-[336] SPEC-UNSUPPORTED   tol=True         ext2        SEModule                   avg_pool2d
-[337] PASS               tol=True         ext2        DepthwiseSeparableConv     AC
-[338] TIMEOUT            tol=True         ext3        Actor                      
-[339] SPEC-ERROR         tol=False(7e-01) ext6        SelfAttention              AttributeError: 'STensor' object has no attribute 'is_nested'
-[340] PASS               tol=True                     SpaceToDepth               AC
-[341] SPEC-ERROR         tol=False(4e-01) ext6        CrossAttention             AttributeError: 'STensor' object has no attribute 'is_nested'
-[342] PASS               tol=True                     Scale                      AC
-[343] KERNEL-UNSUPPORTED tol=True                     Upsample_                  float->int conversion of a symbolic value
-[344] TIMEOUT            tol=True         ext1        SubPixelConvolutionalBlock 
-[345] FAIL               tol=False(2e-02) ext3        DoubleDense                16 outputs differ: witness at random point 0: spec=0.762212 kernel=0.592147
-[346] KERNEL-UNSUPPORTED tol=True         ext1        BasicDeconv                extern transposed convolution
-[347] PASS               tol=True         ext2        LinearNet                  Volta
-[348] PASS               tol=True                     AngleLoss                  Volta
-[349] TIMEOUT            tol=False(9e-01) NONDET ext7 VAE                        
-[350] KERNEL-UNSUPPORTED tol=True         ext1        Upsample                   extern transposed convolution
-[351] SPEC-ERROR         tol=False(3e+00)             DECLoss                    TypeError: Variable data has to be a tensor, but got STensor
-[352] SPEC-UNSUPPORTED   tol=True         ext4        SAModule_Head              instance_norm
-<string>:27: UserWarning: This overload of addmm_ is deprecated:
-	addmm_(Number beta, Number alpha, Tensor mat1, Tensor mat2)
-Consider using one of the following signatures instead:
-	addmm_(Tensor mat1, Tensor mat2, *, Number beta = 1, Number alpha = 1) (Triggered internally at /pytorch/torch/csrc/utils/python_arg_parser.cpp:1805.)
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmpq5mikrkw/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmpq5mikrkw/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-[353] ERROR              tol=False(5e-01) ext1        TripletLoss                TypeError: float() argument must be a string or a real number, not 'Pred'
-[354] SPEC-ERROR         tol=False(4e-01) ext6        MultiHeadAttention         AttributeError: 'STensor' object has no attribute 'is_nested'
-[355] PASS               tol=True                     AUGLoss                    AC
-[356] SPEC-ERROR         tol=True         ext1        Conv2d_fw                  AttributeError: 'STensor' object has no attribute 'fast'
-[357] FAIL               tol=False(1e-01)             ContrastiveDistanceLoss    1 outputs differ: witness at random point 0: spec=11.7338 kernel=13.8197
-[358] PASS               tol=True                     ContrastiveLoss            Volta
-[359] PASS               tol=True                     ContrastiveEmbeddingLoss   AC
-[360] PASS               tol=True                     SoftEntropy                AC
-[361] SPEC-UNSUPPORTED   tol=True         ext1        ContrastivePairwiseEmbeddingLoss einsum
-[362] PASS               tol=True         ext1        PairwiseDistanceMatrix     AC
-<string>:54: UserWarning: Implicit dimension choice for softmax has been deprecated. Change the call to include dim=X as an argument.
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmp6w69aft6/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmp6w69aft6/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-In file included from /home/naana/miniconda/include/python3.13/Python.h:14,
-                 from /tmp/tmpr_4sneqc/__triton_launcher.c:7:
-/home/naana/miniconda/include/python3.13/pyconfig.h:1964:9: warning: ‘_POSIX_C_SOURCE’ redefined
- 1964 | #define _POSIX_C_SOURCE 200809L
-      |         ^~~~~~~~~~~~~~~
-In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
-                 from /usr/include/stdlib.h:26,
-                 from /home/naana/miniconda/lib/python3.13/site-packages/triton/backends/nvidia/include/cuda.h:56,
-                 from /tmp/tmpr_4sneqc/__triton_launcher.c:2:
-/usr/include/features.h:319:10: note: this is the location of the previous definition
-  319 | # define _POSIX_C_SOURCE        202405L
-      |          ^~~~~~~~~~~~~~~
-[363] TIMEOUT            tol=True         ext7        GenerateMask               
-[364] SPEC-ERROR         tol=True         ext3        MLP                        Timeout: 
-[365] PASS               tol=True         ext2        SEModule                   Volta
-[366] PASS               tol=True                     TVLoss                     AC
-[367] SPEC-UNSUPPORTED   tol=False(1e-01) ext2        FullAttention              einsum
-[368] PASS               tol=True                     PointLoss                  AC
-[369] SPEC-ERROR         tol=True                     Hflip                      TypeError: can't convert cuda:0 device type tensor to numpy. Use Tensor.cpu() to copy the tensor to host memory first.
-[370] PASS               tol=True                     normalize                  AC
-[371] PASS               tol=True         ext5        AuxsiameseMLP              Volta
-<string>:33: UserWarning: Implicit dimension choice for log_softmax has been deprecated. Change the call to include dim=X as an argument.
-[372] TIMEOUT            tol=True         ext6        SevenLayerFC_Net           
-/home/naana/miniconda/lib/python3.13/site-packages/torch/nn/_reduction.py:51: UserWarning: size_average and reduce args will be deprecated, please use reduction='mean' instead.
-  warnings.warn(warning.format(ret))
-/home/naana/miniconda/lib/python3.13/site-packages/torch/nn/_reduction.py:51: UserWarning: size_average and reduce args will be deprecated, please use reduction='mean' instead.
-  warnings.warn(warning.format(ret))
-[373] PASS               tol=True                     JointsMSELoss              AC
-[374] PASS               tol=True         ext5        SiameseMLP                 Volta
-[375] KERNEL-UNSUPPORTED tol=True         ext6        SingleKaistAutoEncoder     extern transposed convolution
-[376] PASS               tol=True                     EPE                        Volta
-[377] FAIL               tol=False(4e-02) ext1        BiencoderLoss              1 outputs differ: witness at random point 0: spec=1.42667 kernel=1.43689
-[378] PASS               tol=True         ext3        Attention                  AC
-[379] SPEC-UNSUPPORTED   tol=False(9e-03)             FocalLoss                  binary_cross_entropy
-[380] PASS               tol=True         ext5        AuxMLP                     Volta
-[381] SPEC-UNSUPPORTED   tol=True                     Homography                 unsqueeze(...dim=)
-[382] ERROR              tol=True         ext9        AuxCNN                     AttributeError: 'int' object has no attribute 'uid'
-[383] ERROR              tol=True         ext9        AuxsiameseCNN              AttributeError: 'int' object has no attribute 'uid'
-[384] PASS               tol=True                     AddBias                    AC
-[385] UNKNOWN            tol=True                     Discriminator              output depends on a buffer no launch wrote (tmp1): random or uninitialised memory
-[386] PASS               tol=True                     Hsigmoid                   AC
-/home/naana/miniconda/lib/python3.13/site-packages/torch/nn/_reduction.py:51: UserWarning: size_average and reduce args will be deprecated, please use reduction='sum' instead.
-  warnings.warn(warning.format(ret))
-[387] KERNEL-UNSUPPORTED tol=True                     DistillKL                  libdevice `__nv_isnanf` has no interpretation over the reals
-[388] PASS               tol=True                     Normalize                  AC
-[389] ERROR              tol=True         ext5        CNN                        AttributeError: 'int' object has no attribute 'uid'
-[390] TIMEOUT            tol=True         ext5        RegressionModel            
-[391] ERROR              tol=True         ext9        SiameseCNN                 AttributeError: 'int' object has no attribute 'uid'
-[392] PASS               tol=True                     L2Norm                     AC
-[393] PASS               tol=True                     BasicModel3                Volta
-[394] SPEC-UNSUPPORTED   tol=True         ext1        Conv2dWithConstraint       renorm
-[395] PASS               tol=True         ext1        EdgeCaseModel              AC
-[396] PASS               tol=True                     BasicModel6_MultiTensor    Volta
-[397] PASS               tol=True         ext3        Attention                  Volta
-[398] PASS               tol=True         ext2        PredictionHead             AC
-[399] PASS               tol=True                     BasicModel2                Volta
-
-== verdicts == {'UNKNOWN': 22, 'PASS': 160, 'FAIL': 12, 'KERNEL-UNSUPPORTED': 12, 'SPEC-ERROR': 29, 'SPEC-UNSUPPORTED': 32, 'TIMEOUT': 23, 'ERROR': 13}
-   23  TIMEOUT            
-    9  ERROR              AttributeError: 'int' object has no attribute 'uid'
-    8  SPEC-ERROR         TypeError: Input type is not a torch.Tensor. Got <class 'spe
-    7  UNKNOWN            error: Budget { limit: 200000000 }
-    4  KERNEL-UNSUPPORTED float->int conversion of a symbolic value
-    4  SPEC-UNSUPPORTED   avg_pool2d
-    4  SPEC-ERROR         AttributeError: 'STensor' object has no attribute 'is_nested
-    3  SPEC-ERROR         ValueError: operands could not be broadcast together with re
-    3  UNKNOWN            256 outputs not provably equal but numerically equal on 4 ra
-    3  UNKNOWN            1 outputs not provably equal but numerically equal on 4 rand
-    3  SPEC-UNSUPPORTED   einsum
-    3  KERNEL-UNSUPPORTED extern transposed convolution
-    2  SPEC-ERROR         Timeout: 
-    2  UNKNOWN            output depends on a buffer no launch wrote (tmp3): random or
-    2  UNKNOWN            output depends on a buffer no launch wrote (out): random or 
-== tolerance vs judge == {(False, 'UNKNOWN'): 5, (True, 'PASS'): 160, (False, 'FAIL'): 11, (False, 'KERNEL-UNSUPPORTED'): 2, (True, 'SPEC-ERROR'): 20, (True, 'SPEC-UNSUPPORTED'): 22, (True, 'KERNEL-UNSUPPORTED'): 10, (True, 'UNKNOWN'): 17, (True, 'TIMEOUT'): 18, (False, 'TIMEOUT'): 5, (None, 'ERROR'): 1, (False, 'SPEC-UNSUPPORTED'): 10, (False, 'SPEC-ERROR'): 9, (False, 'ERROR'): 4, (True, 'ERROR'): 8, (True, 'FAIL'): 1}

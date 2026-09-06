@@ -53,7 +53,7 @@
 [ 50] ERROR              label=True  tol=True  d4=True  SurfaceLoss            NotImplementedError: cf.cond_br   |cf.cond_br %0, ^bb1, ^bb2
 [ 51] SPEC-UNSUPPORTED   label=True  tol=True  d4=True  KL_Divergence          norm(p!=2)
 [ 52] PASS               label=True  tol=True  d4=True  Upscale2d              exact
-[ 53] SPEC-UNSUPPORTED   label=True  tol=True  d4=False MaxPoolPad             max_pool2d
+[ 53] FAIL               label=True  tol=True  d4=False MaxPoolPad             1 outputs differ; witness spec=-0.0873757 kernel=0; GPU repr  <<< label=correct, judge=FAIL
 [ 54] PASS               label=True  tol=True  d4=True  Arc                    exact
 [ 55] ERROR              label=True  tol=True  d4=True  Mean                   NotImplementedError: scf.while   |%offset = scf.while (%offs
 [ 56] PASS               label=True  tol=True  d4=True  AddFunction            exact
@@ -75,14 +75,14 @@
 [ 72] UNKNOWN            label=True  tol=True  d4=True  CenteredLayer          unreproducible on hardware (GPU max diff 1.5e-08) -- our mod
 [ 73] PASS               label=True  tol=True  d4=True  PLU                    exact
 [ 74] ERROR              label=True  tol=True  d4=True  BiencoderLoss          RuntimeError: volta_bridge failed: 
-thread 'main' (8721) pan
+thread 'main' (10998) pa
 [ 75] PASS               label=True  tol=True  d4=True  HSwish                 exact
 [ 76] PASS               label=True  tol=True  d4=True  ChannelReplicate       exact
-[ 77] SPEC-UNSUPPORTED   label=True  tol=True  d4=True  MultiLevelPooling      max_pool2d
+[ 77] PASS               label=True  tol=True  d4=True  MultiLevelPooling      exact
 [ 78] SPEC-UNSUPPORTED   label=True  tol=True  d4=True  ParsingRelationLoss    smooth_l1_loss (piecewise)
 [ 79] UNKNOWN            label=True  tol=True  d4=True  PointLoss              output produced by torch after the kernels (64 elements writ
 [ 80] SPEC-ERROR         label=True  tol=True  d4=True  CosineEnvelope         IndexError: only integers, slices (`:`), ellipsis (`...`), n
-[ 81] SPEC-UNSUPPORTED   label=True  tol=True  d4=True  Pooling                avg_pool2d
+[ 81] UNKNOWN            label=True  tol=True  d4=True  Pooling                unreproducible on hardware (GPU max diff 1.2e-07) -- our mod
 [ 82] NO-MODEL           label=True  tol=None  d4=None  ?                      
 [ 83] PASS               label=True  tol=True  d4=True  GeLU                   exact
 [ 84] PASS               label=True  tol=True  d4=True  Sine                   exact
@@ -106,7 +106,7 @@ thread 'main' (8721) pan
 [102] PASS               label=True  tol=True  d4=True  Rot180                 exact
 [103] UNKNOWN            label=True  tol=None  d4=None  GradLoss               1 unprovable but numerically equal
 [104] PASS               label=True  tol=True  d4=True  unrotate               exact
-[105] SPEC-UNSUPPORTED   label=True  tol=True  d4=False MaxPool                max_pool2d
+[105] UNKNOWN            label=True  tol=True  d4=False MaxPool                144 unprovable but numerically equal
 /home/naana/miniconda/lib/python3.13/site-packages/torch/nn/functional.py:3355: UserWarning: reduction: 'mean' divides the total loss by both the batch size and the support size.'batchmean' divides only by the batch size, and aligns with the KL div math definition.'mean' will be changed to behave the same as 'batchmean' in the next major release.
   warnings.warn(
 [106] SPEC-UNSUPPORTED   label=True  tol=True  d4=False KL_Triplet_Loss        kl_div

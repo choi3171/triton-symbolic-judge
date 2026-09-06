@@ -27,3 +27,7 @@ if not os.path.exists("data/triton_traces.json"):
     json.dump([{k: r[k] for k in keep} for r in ds], open("data/triton_traces.json","w"))
 print("corpora ready")
 PY
+
+# KernelBench-Verified: its hidden_tests are read by kbv_blindspot.py
+[ -d data/KBV ] || git clone --depth 1 \
+  https://github.com/facebookresearch/kernel_bench_verified.git data/KBV
