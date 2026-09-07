@@ -7,7 +7,7 @@ tolerance test are actually correct.
 
 ```
 ./setup.sh          # fetch Volta, KernelBench, the corpora; build the bridge
-python3 verify.py   # re-runs every experiment behind every claim below (31/31, ~8 min)
+python3 verify.py   # re-runs every experiment behind every claim below (35/35, ~6 min)
 ```
 
 ## Prior work
@@ -504,5 +504,5 @@ L=256 (단독, 두 쌍만):
 
 ## 검수
 
-모든 숫자는 `verify.py`가 스크립트를 다시 돌려 정규식으로 assert한다. 마지막 실행: **31/31** (fast set, `results/verify.txt`). GPU 주장은
+모든 숫자는 `verify.py`가 스크립트를 다시 돌려 정규식으로 assert한다. 마지막 실행: **35/35** (fast set, `results/verify.txt`); 클린 클론에서도 35/35. GPU 주장은
 `[sm_75]` 태그가 붙고, 다른 아키텍처가 다르게 답하면 그건 방법의 실패가 아니라 정보다.
