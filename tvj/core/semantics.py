@@ -277,6 +277,25 @@ DECISIONS = [
         "reading makes `momentum` harmless: it rewrites batch_norm's running "
         "buffers, never the returned value."),
 
+    Decision("atomic.destination", "tt.atomic_rmw",
+        "What does an atomic accumulation start from -- the destination's existing "
+        "contents, or nothing?",
+        "The sum of this launch's contributions alone.  The destination is assumed "
+        "to hold the additive identity.",
+        "inferred-from-impl",
+        "Every split-K kernel in the corpus zeroes its output first (the generated "
+        "wrapper calls `torch.zeros` or `empty` followed by a full overwrite), and "
+        "its reference is `A @ B` with no term for the destination -- so carrying "
+        "the prior contents would make every correct split-K matmul disagree with "
+        "its own spec.  The assumption is therefore load-bearing and, until this "
+        "entry, undocumented.  It is not free: a kernel that accumulates into a "
+        "destination the wrapper did NOT zero is modelled as if it had, and this "
+        "layer would not notice.  The wrapper's own `torch.zeros` is now captured "
+        "and bound as a constant, so the assumption is checkable where it matters.",
+        "sexec.py Grid.write overwrites an earlier launch's value on the first "
+        "atomic store rather than adding to it; check.py `mm_splitk` passes only "
+        "because of it."),
+
 ]
 
 # Every `measured` entry carries an architecture tag in its evidence. sm_75 has no

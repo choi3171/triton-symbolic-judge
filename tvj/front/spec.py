@@ -19,6 +19,7 @@ import functools, re
 import numpy as np
 from tvj.core import terms as T
 from tvj.decide import delegate as _DEL
+from tvj.core import bounded as _B
 
 def _prod(shape):
     n = 1
@@ -46,8 +47,9 @@ def _fold_axis(arr, axis, fn, keepdim=False):
     moved = np.moveaxis(arr, axis, -1)
     flat = moved.reshape(-1, moved.shape[-1])
     out = np.empty(flat.shape[0], dtype=object)
+    k = _B.limit(flat.shape[-1])            # bounded.py: the other way to bound
     for i in range(flat.shape[0]):
-        out[i] = fn(list(flat[i]))
+        out[i] = fn(list(flat[i])[:k])
     out = out.reshape(moved.shape[:-1])
     if keepdim: out = np.expand_dims(out, axis)
     return out
@@ -87,7 +89,11 @@ class STensor:
         a = self.a.copy()
         a[idx] = v.a if isinstance(v, STensor) else _arr(v)
         self.a = a
-    def __getitem__(self, idx): r = self.a[idx]; return STensor(r) if isinstance(r, np.ndarray) else r
+    def __getitem__(self, idx):
+        # x[idx] where idx is itself a tensor is an indirect read, not a slice
+        if isinstance(idx, STensor) or (isinstance(idx, np.ndarray) and idx.dtype == object):
+            return take(self, idx, 0)
+        r = self.a[idx]; return STensor(r) if isinstance(r, np.ndarray) else r
     def contiguous(self): return self
     def clone(self): return self
     def float(self):
@@ -415,12 +421,13 @@ def dense_matmul(a, b):
     a, b = np.asarray(a), np.asarray(b)
     if a.ndim == 2 and b.ndim == 2:
         M, K = a.shape; N = b.shape[1]
+        kk = _B.limit(K)
         out = np.empty((M, N), dtype=object)
         for i in range(M):
             ai = a[i]
             for j in range(N):
                 bj = b[:, j]
-                out[i, j] = T.add(*[T.mul(ai[k], bj[k]) for k in range(K)])
+                out[i, j] = T.add(*[T.mul(ai[k], bj[k]) for k in range(kk)])
         return out
     if a.ndim > 2 and b.ndim == 2:
         lead, K = a.shape[:-1], a.shape[-1]
@@ -429,6 +436,94 @@ def dense_matmul(a, b):
     if a.ndim == 3 and b.ndim == 3 and a.shape[0] == b.shape[0]:
         return np.stack([dense_matmul(a[i], b[i]) for i in range(a.shape[0])])
     return np.matmul(a, b)               # anything else: rare, and small
+
+
+# An indirect read is written out over the whole axis, so its cost is
+# (slots on the axis) x (output positions).  `sexec` caps the kernel side at
+# Interp.GATHER_EXPAND; without the same cap here an embedding over a real
+# vocabulary builds tens of millions of nodes and takes the process down instead
+# of returning a bucket.
+TAKE_EXPAND = 1 << 20
+
+
+def _is_mask(arr):
+    """Is this an index tensor, or the result of a comparison?
+
+    `x[x > 0]` hands `__getitem__` a tensor of `cmp:` terms.  Treating that as an
+    INDEX silently computes a different function -- and before indirect reads
+    existed it raised, which was better."""
+    for t in np.asarray(arr).reshape(-1)[:8]:
+        fn = getattr(t, "fn", "")
+        if fn.startswith("cmp:") or fn in ("and", "or", "not", "true", "false"):
+            return True
+    return False
+
+
+def gather_nd(x, dim, index):
+    """`torch.gather`: the index has the OUTPUT's shape and picks along `dim` at
+    each position -- `out[i][j] = x[i][index[i][j]]` for dim=1.  Not the same as
+    `index_select`, which takes whole slices; binding the two to one function
+    made the reference silently compute something else for any input above 1-D."""
+    x = _st(x); ix = _st(index)
+    if dim < 0: dim += x.ndim
+    if ix.a.ndim != x.a.ndim:
+        raise NotImplementedError("spec front-end: unsupported torch op gather (rank mismatch)")
+    n = x.a.shape[dim]
+    if n * ix.a.size > TAKE_EXPAND:
+        raise NotImplementedError(f"spec front-end: gather too large to expand "
+                                  f"({n} x {ix.a.size} > {TAKE_EXPAND})")
+    out = np.empty(ix.a.shape, dtype=object)
+    for pos in np.ndindex(*ix.a.shape):
+        rows = [x.a[pos[:dim] + (m,) + pos[dim + 1:]] for m in range(n)]
+        out[pos] = T.gather(rows, ix.a[pos])
+    return STensor(out)
+
+
+def take(x, index, axis=0):
+    """`x` indexed along `axis` by a tensor of symbolic indices.
+
+    Every torch spelling of an indirect read -- `x[idx]`, `torch.gather`,
+    `index_select`, `F.embedding` -- lands here, and here calls `T.gather`, which
+    is the same denotation `sexec` gives `tl.load(src + j)`.  That is the whole
+    point: a gather the two sides spell differently can be represented and never
+    judged, so there is one function."""
+    x = _st(x); ix = _st(index)
+    if _is_mask(ix.a):
+        raise NotImplementedError("spec front-end: unsupported torch op boolean-mask indexing")
+    if axis < 0: axis += x.ndim
+    src = np.moveaxis(x.a, axis, 0)                  # (n, *rest)
+    n = src.shape[0]
+    if n * ix.a.size * int(np.prod(src.shape[1:] or (1,))) > TAKE_EXPAND:
+        raise NotImplementedError(f"spec front-end: indirect read too large to expand "
+                                  f"({n} slots x {ix.a.size} positions)")
+    rest = src.shape[1:]
+    out = np.empty(ix.a.shape + rest, dtype=object)
+    flat_i = ix.a.reshape(-1)
+    view = out.reshape((flat_i.size,) + rest)
+    for k, j in enumerate(flat_i):
+        for pos in (np.ndindex(*rest) if rest else [()]):
+            view[(k,) + pos] = T.gather([src[(m,) + pos] for m in range(n)], j)
+    return STensor(np.moveaxis(out.reshape(ix.a.shape + rest), 0, axis)
+                   if ix.a.ndim == 1 and axis else out)
+
+
+def scatter_add(base, dim, index, source, alpha=1):
+    """`base.index_add_(dim, index, source)` -- the reference side of an atomic
+    scatter-add.  Order-free by construction, so it needs no assumption about
+    which lane arrives first, and it is written the way `sexec` writes it."""
+    b = _st(base); ix = _st(index); src = _st(source)
+    if dim < 0: dim += b.ndim
+    if b.ndim != 1 or ix.a.ndim != 1 or src.a.ndim != 1 or dim != 0:
+        raise NotImplementedError("spec front-end: unsupported torch op index_add (only 1-D dim 0)")
+    idxs = list(ix.a.reshape(-1)); vals = list(src.a.reshape(-1))
+    out = np.empty(b.a.shape, dtype=object)
+    for j in range(b.a.shape[0]):
+        parts = [T.select(T.cmp("eq", T.lift(k), T.const(float(j))),
+                          T.mul(T.const(float(alpha)), T.lift(v)) if alpha != 1 else T.lift(v),
+                          T.ZERO)
+                 for k, v in zip(idxs, vals)]
+        out[j] = T.add(T.lift(b.a[j]), *parts) if parts else T.lift(b.a[j])
+    return STensor(out)
 
 
 def conv_nd(x, w, bias=None, stride=1, padding=0, dilation=1, groups=1, nd=2):
@@ -585,6 +680,12 @@ HARMLESS_KWARGS = frozenset({
     # layer RETURNS does not depend on it.  Harmless exactly because the front-end
     # does not model that mutation -- see semantics.py decision `spec.inplace`.
     "momentum",
+    # gradient-only flags.  This front-end computes forward values, and none of
+    # these can change one: `padding_idx` excludes a row from the GRADIENT (the
+    # row is still returned), and `scale_grad_by_freq` / `sparse` / `norm_type`
+    # select how the gradient is accumulated or normalised.  `norm_type` is only
+    # read alongside `max_norm`, which `embedding` refuses outright.
+    "padding_idx", "scale_grad_by_freq", "sparse", "norm_type",
 })
 
 # --------------------------------------------------------------------------
@@ -731,7 +832,23 @@ _TORCH = {
     "normal": _unsupported("normal (nondeterministic)"), "bernoulli": _unsupported("bernoulli (nondeterministic)"),
     "randn_like": _unsupported("randn_like (nondeterministic)"), "rand_like": _unsupported("rand_like (nondeterministic)"),
     "multinomial": _unsupported("multinomial (nondeterministic)"),
-    "embedding": _unsupported("embedding"), "cross_entropy": _unsupported("cross_entropy"),
+    # every indirect read goes through take() -> T.gather, the denotation the
+    # interpreter gives `tl.load(src + j)`
+    "embedding": lambda idx, weight, padding_idx=None, max_norm=None, norm_type=2.0,
+                        scale_grad_by_freq=False, sparse=False:
+        take(weight, idx, 0) if max_norm is None
+        else _unsupported("embedding(max_norm=)")(),
+    "gather": lambda x, dim, index, sparse_grad=False, out=None: gather_nd(x, dim, index),
+    # the reference side of a scatter-add.  Same order-free statement the
+    # interpreter builds for `tl.atomic_add(dst + idx, v)`:
+    #     out[j] = base[j] + sum_i select(idx_i = j, src_i, 0)
+    "index_add": lambda x, dim, index, source, alpha=1: scatter_add(x, dim, index, source, alpha),
+    "index_add_": lambda x, dim, index, source, alpha=1: scatter_add(x, dim, index, source, alpha),
+    "scatter_add": lambda x, dim, index, src: scatter_add(x, dim, index, src),
+    "scatter_add_": lambda x, dim, index, src: scatter_add(x, dim, index, src),
+    "index_select": lambda x, dim, index, out=None: take(x, index, dim),
+    "take": lambda x, index: take(_st(x).reshape(-1), index, 0),
+    "cross_entropy": _unsupported("cross_entropy"),
     "where": lambda c, a, b: _st(c).where(a, b),
     "ne": lambda a, b: _st(a).ne(b), "eq": lambda a, b: _st(a).eq(b),
     "gt": lambda a, b: _st(a).gt(b), "lt": lambda a, b: _st(a).lt(b),

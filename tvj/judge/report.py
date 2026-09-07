@@ -88,7 +88,11 @@ def report(key):
     acc = [r for r in recs if r.get("accuracy")]
     print(f"  accuracy: {sum(1 for r in acc if r['verdict'] == 'FAIL')} rejected, "
           f"{sum(1 for r in acc if r['verdict'] != 'FAIL')} noted below the materiality floor")
-    print(f"  memory errors recorded: {sum(1 for r in recs if r.get('mem_errors'))} rows")
+    print(f"  memory errors recorded: {sum(1 for r in recs if r.get('mem_errors'))} rows"
+          f"   {dict(collections.Counter(k for r in recs for k in (r.get('mem_error_kinds') or {})))}")
+    sk = [r for r in recs if r.get("accuracy_skipped")]
+    print(f"  accuracy obligation SKIPPED (not passed): {len(sk)} rows"
+          + (f"   e.g. {sk[0]['accuracy_skipped'][:48]}" if sk else ""))
     print(f"  trusted extern calls:  {sum(1 for r in recs if r.get('externs'))} rows, "
           f"{sum(r.get('externs', 0) for r in recs)} calls")
     print(f"  torch tail replayed:   {sum(1 for r in recs if r.get('tail'))} rows")

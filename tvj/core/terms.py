@@ -35,7 +35,12 @@ class Sym(Term):
 class Const(Term):
     __slots__ = ("v",)
     def __init__(self, v):
-        self.v = float(v); self.key = ("const", self.v)
+        self.v = float(v)
+        # NaN is not equal to itself, so ("const", nan) never matches the pool and
+        # every NaN used to become a fresh node -- which meant no two terms
+        # containing one could ever be identified.  There is one NaN here (we do
+        # not distinguish payloads), so give it one key.
+        self.key = ("const", "nan" if self.v != self.v else self.v)
     def __repr__(self): return repr(self.v)
 
 class App(Term):
@@ -76,11 +81,20 @@ def lift(v):
 def sym(buf, idx): return _hc(Sym(buf, idx))
 ZERO, ONE = const(0.0), const(1.0)
 TRUE, FALSE = _hc(App("true", ())), _hc(App("false", ()))
+# everything this module hands out by name; `reset` re-interns exactly this list
+_SINGLETONS = (ZERO, ONE, TRUE, FALSE)
 
 def reset():
-    """Forget every term (between independent runs).  Keeps ZERO/ONE valid."""
+    """Forget every term (between independent runs), keeping the module-level
+    singletons interned.
+
+    Every constant this module hands out by name has to go back in, or the next
+    `app("true")` builds a SECOND structurally identical node and `is` stops
+    meaning "same term" -- which is the one invariant the whole normal form rests
+    on.  TRUE and FALSE were missing, so after the first reset a folded `select`
+    and a rebuilt one were different objects."""
     _pool.clear()
-    for t in (ZERO, ONE): _pool[t.key] = t
+    for t in _SINGLETONS: _pool[t.key] = t
 
 def _sortkey(t): return t.uid
 
@@ -182,6 +196,23 @@ def app(fn, *args):
         args = tuple(sorted(uniq, key=lambda a: a.uid))
         if len(args) == 1: return args[0]
     return _hc(App(fn, args))
+
+def gather(elems, idx, default=None):
+    """One indirect read, written out: select(idx = 0, elems[0], select(idx = 1, ...)).
+
+    The single denotation for a data-dependent read, used by BOTH sides -- the
+    interpreter for `tl.load(src + j)` and the spec front-end for `x[idx]`,
+    `torch.gather`, `index_select` and `embedding`.  They have to agree term for
+    term or a gather can be represented but never judged, so there is one
+    function and both call it.
+
+    Exact rather than approximate: the index is an i32 into a buffer of known
+    size, so the enumeration is complete, and an index outside it falls through
+    to `default` -- the same NaN an out-of-bounds concrete read produces."""
+    out = const(float("nan")) if default is None else lift(default)
+    for j in range(len(elems) - 1, -1, -1):
+        out = select(cmp("eq", lift(idx), const(float(j))), lift(elems[j]), out)
+    return out
 
 def substitute(t, table, memo=None):
     """Rewrite `t`, replacing Sym(buf, i) by table[buf][i] where the buffer is

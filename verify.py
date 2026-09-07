@@ -52,8 +52,8 @@ claim("tf32.py", "input_precision=tf32 is a permission: ignored on sm_75, bitwis
       tag="sm_75")
 claim("difftest_mm.py", "whole-kernel: semantics and GPU are equally far from float64",
       [r"max \|semantics - float64\|\s+3\.545e-06", r"max \|gpu\s+- float64\|\s+3\.545e-06"], tag="sm_75")
-claim("semantics.py", "20 decisions, none open",
-      [r"20 semantic decisions over 26 core ops", r"\[open\]\s+0", r"\[measured\]\s+5"])
+claim("semantics.py", "21 decisions, none open",
+      [r"21 semantic decisions over 26 core ops", r"\[open\]\s+0", r"\[measured\]\s+5"])
 
 # --- Volta decision procedure ------------------------------------------------
 claim("volta_check.py", "Volta bridge: 7/7 identities; softmax naive==safe 16/16 and 128/128",
@@ -82,12 +82,20 @@ claim("capture_test.py", "judging by intercepting real GPU launches: mm_tiled, s
       [r"mm_tiled via launch\(\).*\n.*Volta 1024/1024  missing 0  mem-errors 0",
        r"mm_splitk via launch\(\).*grid=\(2, 2, 2\).*\n.*Volta 1024/1024  missing 0",
        r"attn_flash via launch\(\).*\n.*Volta 512/512  missing 0"], tag="sm_75")
+# The prose says EVERY value FAIL reproduces, so the check is a negative sweep
+# below (no "outputs differ" line without a "GPU reproduces at"), not a single
+# search that one matching row would satisfy.
 claim("kernelbook_run.py", "KernelBook rows 0-40: >=28 PASS all with tol=True; every value FAIL carries a numeric witness the GPU then reproduces",
-      [r"'PASS': (2[89]|3\d)", r"\(True, 'PASS'\): (2[89]|3\d)",
+      [r"'PASS': (2[89]|[34]\d)", r"\(True, 'PASS'\): (2[89]|[34]\d)",
        r"outputs differ; witness spec=\S+ kernel=\S+; GPU reproduces at"], args=("0", "40"), tag="sm_75")
 
-claim("kernelbook_run.py", "KernelBook row 17: judge FAILs with a numeric witness where the dataset's tolerance test is vacuous (uninitialised params)",
-      [r"\[ 17\] FAIL\s+tol=True.*DEGEN\s+GatSymAttention\s+\d+ outputs differ; witness spec=\S+ kernel=\S+; GPU reproduces at"],
+# Deliberately does NOT pin `tol`.  This row's parameters are uninitialised, so the
+# tolerance test compares garbage with garbage and its verdict depends on whatever
+# the allocator left behind -- True here, False in a fresh clone.  That is the
+# finding; pinning it would make the claim depend on the nondeterminism it documents.
+claim("kernelbook_run.py", "KernelBook row 17: judge FAILs with a numeric witness the GPU reproduces, where the dataset's own tolerance test is vacuous (uninitialised params, flagged DEGEN)",
+      [r"\[ 17\] FAIL\s+tol=\S+\s+DEGEN\s+GatSymAttention\s+\d+ outputs differ; "
+       r"witness spec=\S+ kernel=\S+; GPU reproduces at"],
       args=("--rows", "17"), tag="sm_75")
 
 claim("kb_critic.py", "KernelBook row 308: judge's FAIL attributed exactly -- wrapper permutes same-shaped tensors; tolerance test hides a 190% relative error behind atol",
@@ -102,7 +110,9 @@ claim("reward_hack_lit.py", "documented reward hacks: Sakana's stale-buffer reus
 claim("reward_hack_lit.py", "unstable variance: equal over the reals (value=pass is CORRECT) and the precondition FAIL is a false positive -- caught only by the accuracy obligation it created",
       [r"variance: E\[X\^2\]-E\[X\]\^2\s+KBV\s+PASS\s+PASS\s+\S+\s+pass\s+pass\s+pass\s+FAIL\[false \+ve\]\s+FAIL \(shift",
        r"CAUGHT BY THE ACCURACY OBLIGATION, and by nothing else here",
-       r"product: early exit on a zero.*\n.*REFUSED|REFUSED \(Unsupported\)"], tag="sm_75")
+       # alternation has to be grouped: unparenthesised, this claim was satisfied by
+       # the bare string "REFUSED (Unsupported)" appearing anywhere in the output
+       r"product: early exit on a zero(?:.*\n.*REFUSED|.*REFUSED \(Unsupported\))"], tag="sm_75")
 
 # --- the reference itself ----------------------------------------------------
 # A wrong spec is the one failure mode nothing downstream can catch: it makes a
@@ -111,8 +121,8 @@ claim("reward_hack_lit.py", "unstable variance: equal over the reals (value=pass
 # dead threshold) are why these two run on every verification.
 claim("spec_sigcheck.py", "every spec handler agrees with torch: no swallowed, mis-positioned, or declared-and-unread argument",
       [r"0 disagreement\(s\): 0 silent \(0 mis-positioned, 0 swallowed, 0 dead\)"])
-claim("spec_agree.py", "the spec front-end computes what torch computes: 103 cases including the full pooling flag sweep, plus 3 modes it must refuse",
-      [r"103/103 handlers agree with torch", r"3/3 refusals as expected", r"avg_pool2d k3 s2 p1 ceil=True cip=False.*ok",
+claim("spec_agree.py", "the spec front-end computes what torch computes: 110 cases including the full pooling flag sweep and every indirect-read spelling, plus 3 modes it must refuse",
+      [r"110/110 handlers agree with torch", r"gather\(dim=1\).*ok", r"index_select\(dim=0\).*ok", r"3/3 refusals as expected", r"avg_pool2d k3 s2 p1 ceil=True cip=False.*ok",
        r"var\(dim, unbiased=False\).*ok", r"adaptive_avg_pool2d -> 3.*ok"])
 
 claim("delegate_test.py", "delegated library ops: the two spellings share a symbol, nothing else does, small operands are untouched, and a pair the shortcut cannot settle is expanded rather than reported",
@@ -139,6 +149,13 @@ claim("testgen_validate.py", "an axis generalises where a point does not: two di
        r"-> 4/4 caught by one directive", r"-> 3/3 caught by one directive",
        r"42\s+BiasLayer\s+passes\s+CAUGHT\s+unseen",
        r"114\s+GatedTanhUnit\s+passes\s+CAUGHT\s+unseen"], tag="sm_75")
+# Half the defects a review of this project turns up are not the kind anyone reads
+# their way to -- NaN never interning, `reset()` forgetting two singletons.  This
+# is the standing check for that class: properties over randomly generated terms,
+# swept across ten seeds because the first version of it passed on its own fixed
+# seed and failed on nine of the next ten.
+claim("metamorphic.py", "term-algebra properties over 10 seeds x 4000 random terms: a constructor returns what it was asked for, and a term computes what its construction meant",
+      [r"10 seeds x 4000 terms: all properties hold"])
 claim("accuracy_test.py", "the accuracy obligation fires on cancellation and stays silent on mere reassociation",
       [r"unstable variance\s+worse\s+worse", r"stable variance \(reverse\)\s+pass\s+pass",
        r"3\*sum vs sum of 3\*x\s+pass\s+pass", r"5/5 accuracy verdicts as expected"])
@@ -180,6 +197,13 @@ if __name__ == "__main__":
         out, dt = run(script, args)
         missing = [p for p in pats if not re.search(p, out)]
         if script == "kernelbook_run.py" and args == ("0", "40"):
+            # Every value FAIL must carry hardware corroboration, not just one of
+            # them.  Anchored on the FAIL verdict: a row whose gate could not run
+            # is reported as UNKNOWN with the same witness text, and that is the
+            # designed behaviour rather than a violation.
+            for m_ in re.finditer(r"^\[\s*\d+\] FAIL\s+.*outputs differ; witness [^\n]*", out, re.M):
+                if "GPU reproduces at" not in m_.group(0):
+                    missing.append("NEGATIVE: a value FAIL with no GPU reproduction: " + m_.group(0)[:80])
             # a tol=True FAIL is allowed only when the tolerance test was vacuous (degenerate params)
             for m_ in re.finditer(r"^\[ *\d+\] FAIL\s+tol=True(.*)$", out, re.M):
                 if "DEGEN" not in m_.group(1): missing.append("NEGATIVE: tol=True row judged FAIL without DEGEN: " + m_.group(0)[:80])

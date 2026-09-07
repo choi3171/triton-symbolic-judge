@@ -24,7 +24,7 @@ the right answer, tf32 is ignored on sm_75, a narrowed validity radius shows
 only at extreme inputs), so gating would discard exactly the defects a test
 cannot reach, which is the whole reason the judge exists.
 """
-import copy, inspect, signal, time, torch
+import collections, copy, inspect, signal, time, torch
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -314,12 +314,19 @@ def judge(cand, timeout=150, tol_trials=5):
         if worst is None:                       # fall back to random points
             worst, _ = gpu_confirm(cand, gate["mk"], probe=probe)
         rec["gpu_maxdiff"] = worst
-        if worst is not None and worst <= 1e-4:
+        if worst is None:
+            # the gate could not run at all -- every trial raised, or the probe
+            # rejected every input.  The contract is that a value FAIL is believed
+            # only when hardware reproduces it, so with no hardware answer there is
+            # no FAIL to report.
+            rec["verdict"] = "UNKNOWN"
+            rec["reason"] = reason + "; but the hardware check could not run, so this is not corroborated"
+        elif worst <= 1e-4:
             rec["verdict"] = "UNKNOWN"
             rec["reason"] = f"unreproducible on hardware (GPU max diff {worst:.2g}) -- our modelling gap, not a defect"
         else:
             rec["verdict"] = "FAIL"
-            rec["reason"] = reason + (f"; GPU reproduces at {worst:.4g}" if worst else "; hardware inconclusive")
+            rec["reason"] = reason + f"; GPU reproduces at {worst:.4g}"
         return rec
 
     try:
@@ -341,9 +348,23 @@ def judge(cand, timeout=150, tol_trials=5):
         rec["launches"] = sum(1 for c in calls if c[0] != "extern")
         rec["externs"] = sum(1 for c in calls if c[0] == "extern")
 
-        # determinism: a second run must agree bit for bit, or nothing below means anything
+        # determinism: a second run must agree bit for bit, or nothing below means
+        # anything.  This used to be recorded and never acted on -- a kernel whose
+        # two runs differed still flowed through every obligation and could PASS.
         with torch.no_grad(): out2 = first(cand.run(inputs))
         rec["det"] = bool(torch.allclose(out.float(), out2.float(), rtol=0, atol=0, equal_nan=True))
+        if not rec["det"]:
+            # ... unless the REFERENCE is nondeterministic too, in which case the
+            # task itself is, and there is nothing to refine either way
+            with torch.no_grad():
+                r2 = first(model(*inputs)); r3 = first(model(*inputs))
+            ref_det = bool(torch.allclose(r2.float(), r3.float(), rtol=0, atol=0, equal_nan=True))
+            rec["ref_det"] = ref_det
+            rec["verdict"] = "NONDETERMINISTIC"; rec["obligation"] = "memory"
+            rec["reason"] = ("the kernel gives a different answer on a second run at the same "
+                             "inputs; the reference does not" if ref_det else
+                             "both the kernel and the reference are nondeterministic at fixed inputs")
+            return rec
 
         mk = lambda: [torch.rand(x.shape, device="cuda") if torch.is_tensor(x) else x for x in inputs]
         gate["mk"] = lambda g, dist="signed": [
@@ -373,12 +394,27 @@ def judge(cand, timeout=150, tol_trials=5):
         rec["mem_errors"] = len(grid.errors)
 
         # --- obligation: memory ------------------------------------------------
-        races = [e for e in grid.errors if e[0] == "read-write-race"]
-        if races:
-            rec["verdict"] = "UNKNOWN"; rec["obligation"] = "memory"
-            rec["reason"] = (f"read-write race inside one launch: {races[0][1]}[{races[0][2]}] "
-                             f"written by program {races[0][3]}, read by {races[0][4]}")
-            return rec
+        # Every kind the interpreter records, not just races.  `check.py` fails a
+        # kernel on ANY entry in `g.errors` -- that is how `bug_splitk_store` is
+        # caught -- and this path used to look at `read-write-race` alone, so a
+        # corpus row with a write-conflict or an out-of-bounds access could reach
+        # PASS while the same kernel failed check.py.  A conflict keeps the first
+        # writer's term, and if that one happens to match the reference nothing
+        # else in the pipeline would ever notice.
+        if grid.errors:
+            kinds = collections.Counter(e[0] for e in grid.errors)
+            rec["mem_error_kinds"] = dict(kinds)
+            race = next((e for e in grid.errors if e[0] == "read-write-race"), None)
+            if race is not None:
+                # a read of another program's store inside one launch: the value
+                # depends on scheduling, so there is nothing to refine
+                rec["verdict"] = "UNKNOWN"; rec["obligation"] = "memory"
+                rec["reason"] = (f"read-write race inside one launch: {race[1]}[{race[2]}] "
+                                 f"written by program {race[3]}, read by {race[4]}")
+                return rec
+            e = grid.errors[0]
+            return fail("memory", f"{e[0]} at {e[1]}[{e[2]}] "
+                                  f"({', '.join(f'{k} x{v}' for k, v in kinds.items())})")
 
         phys = physical_offsets(out)
         kterms = [grid.store.get((out_role, p)) for p in phys]
@@ -634,13 +670,22 @@ def judge(cand, timeout=150, tol_trials=5):
         #     range analysis can see it; compare the float32 error of both sides at
         #     regimes that stress it.
         t0 = time.time()
+        # The domain has to cover BOTH sides, exactly as the precondition obligation
+        # above does: the reference may name a parameter the kernel took as a scalar,
+        # and evaluating a term whose buffer is missing raises a KeyError that used to
+        # be swallowed into "skip" -- leaving the row to PASS with this obligation
+        # never run and nothing in the record to say so.
+        adom = dict(grid.bufsize); adom.update(sym_domain(sf, kterms))
         try:
-            av, ad = ACC.compare(sf, kterms, dict(grid.bufsize))
+            av, ad = ACC.compare(sf, kterms, adom)
         except Timeout: raise            # the alarm is not an accuracy result
         except Exception as e:
-            av, ad = "skip", str(e)[:60]
+            av, ad = "skip", f"{type(e).__name__}: {str(e)[:60]}"
         rec["t_acc"] = round(time.time() - t0, 2)
-        if av in ("worse", "noted"): rec["accuracy"] = ad
+        # A skipped obligation is not a passed one, and the record has to be able
+        # to tell them apart or the coverage number quietly counts one as the other.
+        if av == "skip": rec["accuracy_skipped"] = ad
+        elif av in ("worse", "noted"): rec["accuracy"] = ad
         if av == "worse":
             return fail("accuracy", f"numerically worse than the reference at {ad['regime']}: "
                                     f"relative error {ad['spec_rel_err']:.2g} -> {ad['kernel_rel_err']:.2g}")
@@ -649,15 +694,17 @@ def judge(cand, timeout=150, tol_trials=5):
     except Timeout: rec["verdict"] = "TIMEOUT"; return rec
     except TermBudget as e: rec["verdict"] = "TOO-LARGE"; rec["reason"] = str(e); return rec
     except Unsupported as e: rec["verdict"] = "KERNEL-UNSUPPORTED"; rec["reason"] = str(e)[:80]; return rec
-    except Exception as e:
-        # A kernel that will not compile is a fact about the candidate, not a
-        # failure of the judge; the corpus labels every such row incorrect anyway.
-        if type(e).__name__ in ("CompilationError", "SyntaxError", "IndentationError"):
-            rec["verdict"] = "KERNEL-BROKEN"; rec["reason"] = f"{type(e).__name__}: {str(e)[:70]}"; return rec
-        raise
     except NotImplementedError as e:
         rec["verdict"] = "KERNEL-UNSUPPORTED"; rec["reason"] = str(e).split("|")[0].strip()[:80]; return rec
     except Exception as e:
+        # A kernel that will not compile is a fact about the candidate, not a
+        # failure of the judge; the corpus labels every such row incorrect anyway.
+        # This has to be the LAST handler: when it sat above the two before it,
+        # they were unreachable, the ERROR verdict could never be recorded, and
+        # anything not in this tuple propagated out of a function whose contract
+        # is that every way out is a verdict -- taking the whole corpus run with it.
+        if type(e).__name__ in ("CompilationError", "SyntaxError", "IndentationError"):
+            rec["verdict"] = "KERNEL-BROKEN"; rec["reason"] = f"{type(e).__name__}: {str(e)[:70]}"; return rec
         rec["verdict"] = "ERROR"; rec["reason"] = f"{type(e).__name__}: {str(e)[:80]}"; return rec
     finally:
         signal.alarm(0)

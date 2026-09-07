@@ -10,12 +10,45 @@ tolerance test are actually correct.
 python3 verify.py   # re-runs every experiment behind every claim below (31/31, ~8 min)
 ```
 
-Closest prior work: [*The Correctness Illusion in LLM-Generated GPU
+## Prior work
+
+**[Gimlet Labs](https://gimletlabs.ai/blog/formally-verifying-ai-generated-kernels)**
+(Taneja, St John, Serrino; ARRAY 2026 at PLDI) built the closest thing to this,
+and reached the same two structural decisions independently: parse `.ttir`, and
+model floating point as **exact reals**. Their reference comes from
+`torch.compile`'s FX graph rather than from running `forward` on symbolic
+tensors, and they scalarise into Z3 directly; on 26 KernelBench Level 1 kernels
+they report 16 proved, 8 unknown, and **2 that passed numeric testing while being
+mathematically inequivalent**. Finding that two efforts land on the same IR and
+the same numeric model is a point in favour of both choices.
+
+What is here that is not there, taking their own stated limitation as the
+starting point — *"differing use of floating point values can lead to accuracy
+bugs"* that the approach cannot address:
+
+- **Four obligations besides value equality.** Memory (Sakana's stale-buffer
+  exploit is *equal* over the reals — the output is a buffer nobody wrote),
+  precision as a directed lattice, a float-validity precondition, and the
+  accuracy obligation that answers exactly the limitation quoted above: evaluate
+  both terms in float32 and float64 at shifted regimes and compare the *errors*.
+  That is what rejects three corpus kernels spelling `tanh` through raw
+  exponentials — exact over the reals, NaN in float32 above x = 44.
+- **A hardware gate.** A value FAIL is believed only if the GPU reproduces it at
+  the witness point. Every false positive this project produced was caught there.
+- **AC normal form before any solver.** 232 of 246 KernelBook value decisions
+  finish without calling one; Volta's exponential-polynomial procedure and Z3
+  case splitting are the second and third stages, not the first.
+- **A counterexample yields an axis**, which `tvj/judge/testgen.py` turns into a
+  harness check that runs without the judge.
+- **Corpus scale and split**: 400 compiler-generated rows and 156 LLM-written
+  ones, measured separately, because they fail in different ways.
+
+Also relevant: [*The Correctness Illusion in LLM-Generated GPU
 Kernels*](https://arxiv.org/abs/2606.20128) makes the same starting observation
-and answers it with better fuzzing on the input axis. Everything below is on
-axes a sampler does not reach — module parameters, stale memory, precision,
-numerical stability — plus the fact that symbolic inputs remove the notion of a
-sampling blind spot rather than moving it.
+and answers it with better fuzzing on the input axis. The axes below are ones a
+sampler does not reach — module parameters, stale memory, precision, numerical
+stability — and symbolic inputs remove the notion of a sampling blind spot
+rather than moving it.
 
 ## What it found
 

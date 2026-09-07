@@ -15,12 +15,26 @@ import re
 from dataclasses import dataclass
 from tvj.core import terms as T
 from tvj.core import ttir as P
+from tvj.core import bounded as _B
 from tvj.core import semantics as S
 
 class Ptr:
     __slots__ = ("buf", "off")
     def __init__(self, buf, off): self.buf, self.off = buf, off
     def __repr__(self): return f"{self.buf}+{self.off}"
+
+class SymPtr:
+    """A pointer whose offset was loaded from memory.
+
+    `tt.addptr` used to refuse these outright, which meant a gather and a scatter
+    came back with the same message and neither could be worked on separately.
+    The address is only a problem once it is USED: a read from a symbolic offset
+    is a selection out of a buffer, which is expressible, while a write to one
+    invalidates the offset-keyed store and is not.  So carry it, and let
+    `tt.load` and `tt.store` each say what they can."""
+    __slots__ = ("buf", "base", "idx")
+    def __init__(self, buf, base, idx): self.buf, self.base, self.idx = buf, base, idx
+    def __repr__(self): return f"{self.buf}+{self.base}+<{self.idx}>"
 
 @dataclass
 class Tile:
@@ -286,6 +300,39 @@ class Interp:
         self.grid_shape, self.g = grid_shape, Grid(bufsize)
         self.covered = set()   # ops we actually executed (coverage report)
 
+    # How many slots a symbolic read may be written out over.  Below this the
+    # gather is expanded exactly, which is what lets the value obligation find a
+    # counterexample; above it the whole read stays one uninterpreted term, which
+    # still decides the common case (both sides gather the same buffer at the same
+    # index) by congruence, but can only say "equal", never "differs here".
+    GATHER_EXPAND = 1024
+
+    def gather(self, q, dom):
+        """A read whose offset was loaded from memory.
+
+        The index is an i32 into a buffer of known size, so the read is a choice
+        among finitely many slots and can be written out:
+
+            load(src + j)  =  select(j = 0, src[0], select(j = 1, src[1], ...))
+
+        Sound because the enumeration is complete over the buffer, and exact: an
+        index outside it falls through to the NaN the concrete path already
+        reports for an out-of-bounds read."""
+        n = self.g.bufsize.get(q.buf)
+        if n is None:
+            raise Unsupported(f"gather from `{q.buf}`, whose size is not known")
+        idx = q.idx if not q.base else T.add(q.idx, T.const(float(q.base)))
+        if n > self.GATHER_EXPAND:
+            # An uninterpreted `gather:<buf>` symbol would only decide if the
+            # reference emitted the SAME symbol -- and spec.take always expands, so
+            # it cannot.  Worse, nothing can evaluate it: the numeric witness, the
+            # range analysis and the accuracy layer would each raise and be swallowed
+            # somewhere.  Refuse instead, and say what the cap is.
+            raise Unsupported(f"gather over {n} slots > {self.GATHER_EXPAND}: too wide "
+                              f"to write out, and there is no congruence fallback")
+        return T.gather([self.g.read(q.buf, j, self.pid, dom) for j in range(n)], idx,
+                        default=dom.const(float("nan")))
+
     def run_all(self):
         # anything already in memory came from an earlier launch; mark it so
         for k in list(self.g.writer): self.g.writer[k] = ("earlier",)
@@ -415,9 +462,15 @@ class Interp:
             put(Tile(shape, list(a(0).data)))
         elif n == "tt.addptr":
             p, o = bcast(a(0), shape), bcast(a(1), shape)
-            if any(isinstance(off, T.Term) for off in o.data):
-                raise Unsupported("data-dependent address (offset loaded from memory)")
-            put(Tile(shape, [Ptr(x.buf, x.off + y) for x, y in zip(p.data, o.data)]))
+            out = []
+            for x, y in zip(p.data, o.data):
+                if isinstance(y, T.Term) or isinstance(x, SymPtr):
+                    b = x.buf; base = x.base + 0 if isinstance(x, SymPtr) else x.off
+                    idx = T.add(x.idx, y) if isinstance(x, SymPtr) else y
+                    out.append(SymPtr(b, base, idx))
+                else:
+                    out.append(Ptr(x.buf, x.off + y))
+            put(Tile(shape, out))
         elif n.startswith("arith.") and n[6:] in _INT_BIN:
             f = _INT_BIN[n[6:]]
             bits = S.int_bits(P.elem_of(op.rtype))
@@ -536,26 +589,61 @@ class Interp:
             # decision load.masked-value
             other = bcast(a(2), shape).data if len(op.operands) > 2 else [self.dom.const(0.0)]*numel(shape)
             if any(isinstance(m, Pred) for m in mask): raise Unsupported("load mask derived from a float comparison")
-            put(Tile(shape, [self.g.read(q.buf, q.off, self.pid, self.dom) if m else o
+            put(Tile(shape, [(self.gather(q, self.dom) if isinstance(q, SymPtr)
+                              else self.g.read(q.buf, q.off, self.pid, self.dom)) if m else o
                              for q, m, o in zip(p.data, mask, other)]))
         elif n == "tt.store":
             pshape = P.shape_of(op.rtype)
             p, v = bcast(a(0), pshape), bcast(a(1), pshape)
             mask = bcast(a(2), pshape).data if len(op.operands) > 2 else [True]*numel(pshape)
             for q, val, m in zip(p.data, v.data, mask):
+                if isinstance(q, SymPtr):
+                    raise Unsupported("data-dependent write address (scatter): the store is "
+                                      "keyed by concrete offset, and a symbolic one has no slot")
                 if m: self.g.write(q.buf, q.off, val, self.pid, dom=self.dom)
         elif n == "tt.atomic_rmw":
             kind = _ATOMIC.search(raw).group(1)
             assert kind == "fadd", f"unsupported atomic {kind}"
             p, v = bcast(a(0), shape), bcast(a(1), shape)
             mask = bcast(a(2), shape).data if len(op.operands) > 2 else [True]*numel(shape)
-            for q, val, m in zip(p.data, v.data, mask):
+            lanes = list(zip(p.data, v.data, mask))
+            sym = [(q, val, m) for q, val, m in lanes if isinstance(q, SymPtr)]
+            if sym:
+                # A scatter-ADD has a denotation the plain scatter does not, and it
+                # is the reason to treat the two separately: addition is associative
+                # and commutative, so the result does not depend on which lane got
+                # there first.  Accumulate per output SLOT rather than per lane --
+                #     out[j] = sum_i  select(idx_i = j, v_i, 0)
+                # -- which is exactly the order-free statement, and is what a
+                # tensor-parallel or MoE reduction is.
+                bufs = {q.buf for q, _, _ in sym}
+                if len(bufs) != 1:
+                    raise Unsupported("scatter-add across more than one buffer")
+                if len(sym) != len(lanes):
+                    raise Unsupported("scatter-add mixing symbolic and concrete addresses")
+                if any(isinstance(m, Pred) for _, _, m in sym):
+                    raise Unsupported("scatter-add under a mask derived from a float comparison")
+                buf = bufs.pop(); nslots = self.g.bufsize[buf]
+                if nslots > self.GATHER_EXPAND:
+                    raise Unsupported(f"scatter-add over {nslots} slots > {self.GATHER_EXPAND}")
+                for j in range(nslots):
+                    parts = []
+                    for q, val, m in sym:
+                        if not m: continue
+                        idx = q.idx if not q.base else T.add(q.idx, T.const(float(q.base)))
+                        parts.append(T.select(T.cmp("eq", idx, T.const(float(j))), val, T.ZERO))
+                    if parts:
+                        self.g.write(buf, j, T.add(*parts), self.pid, atomic=True, dom=self.dom)
+                put(Tile(shape, [self.dom.const(0.0)] * numel(shape)))
+                return
+            for q, val, m in lanes:
                 if m: self.g.write(q.buf, q.off, val, self.pid, atomic=True, dom=self.dom)
             put(Tile(shape, [self.dom.const(0.0)]*numel(shape)))   # old value, unused
         elif n == "tt.dot":
             A, B, C = a(0), a(1), a(2)
             M, Kd = A.shape; Kd2, N = B.shape
             assert Kd == Kd2
+            Kd = _B.limit(Kd)                # bounded.py: the other way to bound
             pm = _PREC.search(raw); prec = pm.group(1) if pm else "ieee"
             out = []
             for i in range(M):
@@ -602,7 +690,7 @@ class Interp:
                     if i == axis: continue
                     base += idx[k] * ist[i]; k += 1
                 acc = src.data[base]
-                for j in range(1, n_ax):
+                for j in range(1, _B.limit(n_ax)):
                     inner = dict(env)
                     inner[blk.results[0]] = scalar(acc)
                     inner[blk.results[1]] = scalar(src.data[base + j*ist[axis]])

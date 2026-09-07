@@ -65,6 +65,18 @@ CASES = [
      dict(x=(3, 4), w=(4,), b=(4,))),
     ("conv2d stride/pad",         lambda x, w, b: F.conv2d(x, w, b, 2, 1),
      dict(x=(1, 2, 5, 5), w=(3, 2, 3, 3), b=(3,))),
+    # -- indirect reads.  `gather` and `index_select` are NOT the same function:
+    #    binding both to one helper made the reference silently compute something
+    #    else for any input above one dimension, and nothing downstream saw it.
+    ("gather(dim=1)",             lambda x, i: torch.gather(x, 1, i),     dict(x=(3, 4), i=(3, 4)), "int:4"),
+    ("gather(dim=0)",             lambda x, i: torch.gather(x, 0, i),     dict(x=(4, 3), i=(4, 3)), "int:4"),
+    ("index_select(dim=0)",       lambda x, i: torch.index_select(x, 0, i), dict(x=(5, 3), i=(4,)), "int:5"),
+    ("x[idx]",                    lambda x, i: x[i] + 0.0,                dict(x=(5,), i=(4,)),   "int:5"),
+    ("embedding",                 lambda i, w: F.embedding(i, w),         dict(i=(4,), w=(5, 3)), "int:5"),
+    ("index_add",                 lambda b, i, s: torch.index_add(b, 0, i, s),
+     dict(b=(5,), i=(4,), s=(4,)), "int:5"),
+    ("scatter_add",               lambda b, i, s: torch.scatter_add(b, 0, i, s),
+     dict(b=(5,), i=(4,), s=(4,)), "int:5"),
     # -- piecewise and normalisation, added once `select` made them expressible ---
     ("elu(alpha=1)",              lambda x: F.elu(x),                    dict(x=(3, 4))),
     ("elu(alpha=0.7)",            lambda x: F.elu(x, 0.7),               dict(x=(3, 4))),
@@ -141,8 +153,14 @@ if __name__ == "__main__":
     bad = 0
     print(f"{'case':<28} {'shape':<14} {'max rel error':>20}  status")
     print("-" * 76)
-    for label, fn, shapes in CASES:
-        tensors = {k: torch.rand(s, generator=g, dtype=torch.float64) * 2 - 1 for k, s in shapes.items()}
+    for case in CASES:
+        label, fn, shapes = case[0], case[1], case[2]
+        # "int:N" marks the case's index tensor: whichever argument is named `i`
+        # is drawn from [0, N) as integers, because an index is not a float
+        idx_hi = int(case[3].split(":")[1]) if len(case) > 3 else None
+        tensors = {k: (torch.randint(0, idx_hi, s, generator=g) if (k == "i" and idx_hi)
+                       else torch.rand(s, generator=g, dtype=torch.float64) * 2 - 1)
+                   for k, s in shapes.items()}
         try:
             want, got, wshape, sshape = run(fn, **tensors)
         except Exception as e:
