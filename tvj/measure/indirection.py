@@ -101,6 +101,23 @@ def judge_gather():
     print(f"\nreference `zeros.index_add_(0, idx, src)` vs the kernel, {N} outputs")
     print(f"   AC normal form:      {ac2}/{N} identical")
 
+    # ---- scatter, which is decided only under an assumption -----------------
+    T.reset()
+    bufs = {"src_ptr": N, "idx_ptr": N, "out_ptr": N}
+    f = P.parse(to_ttir(scatter, SIG, {"BLOCK": N}))
+    it = X.Interp(f, None, (1,), bufs)
+    it.argvals = [X.Ptr("src_ptr", 0), X.Ptr("idx_ptr", 0), X.Ptr("out_ptr", 0), N]
+    it.run_all()
+    kern = [it.g.store[("out_ptr", j)] for j in range(N)]
+    ref = _t.scatter(STensor.input("out_ptr", (N,)), 0,
+                     STensor.input("idx_ptr", (N,)), STensor.input("src_ptr", (N,))).flat()
+    ac3 = sum(1 for a, b in zip(ref, kern) if a is b)
+    print(f"\nreference `out.scatter_(0, idx, src)` vs the kernel, {N} outputs")
+    print(f"   AC normal form:      {ac3}/{N} identical")
+    for k, b_, w in it.g.assumptions:
+        print(f"   assumption recorded: {k} on `{b_}`")
+        print(f"      {w}")
+
     # and a kernel that is WRONG must not pass: shift the index by one
     T.reset()
     bad = [T.gather([T.sym("src_ptr", j) for j in range(N)],

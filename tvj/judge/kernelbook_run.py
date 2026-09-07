@@ -118,7 +118,13 @@ if __name__ == "__main__":
             print(f"\n!! row {i} poisoned the CUDA context -- stopping (an earlier row may be the culprit: the assert is asynchronous). "
                   f"Restart with:  python3 kernelbook_run.py {i+1} {len(rows)-i-1}", flush=True)
             break
-        open("data/kb_live.jsonl", "a").write(json.dumps(rec) + "\n")
+        # verify.py runs `kernelbook_run 0 40` to reproduce a claim, and every such
+        # run used to append 41 rows to the corpus record -- mixing a full sweep
+        # with claim runs, so a row judged twice was reported from whichever landed
+        # last.  Row 17 flips between tol=True and tol=False (its parameters are
+        # uninitialised), which is exactly how it was noticed.
+        if not os.environ.get("TVJ_NO_RECORD"):
+            open("data/kb_live.jsonl", "a").write(json.dumps(rec) + "\n")
         flags = ("" if rec.get("det", True) else " NONDET") \
               + (" DEGEN" if rec.get("degenerate_params") else "") \
               + (f" prec<{rec['prec']}" if rec.get("prec") not in (None, "exact", "ieee", "f32") else "") \

@@ -18,7 +18,10 @@ CORPORA = {
                    jsonl="results/triton_traces.jsonl", globs=(),
                    label="label", name="model"),
 }
-DECIDED = ("PASS", "FAIL")
+# PASS-ASSUMING is decided, but only within a stated assumption the judge cannot
+# discharge -- an unguarded scatter is well defined exactly when its indices are
+# injective, which is a property of the input.  Counted as judged, reported apart.
+DECIDED = ("PASS", "FAIL", "PASS-ASSUMING")
 
 
 def load(c):
@@ -76,6 +79,10 @@ def report(key):
     print("\nobligations")
     ob = collections.Counter(r.get("obligation") for r in recs if r["verdict"] == "FAIL")
     print(f"  FAIL by obligation:   {dict(ob)}")
+    asm = [r for r in recs if r.get("assumptions")]
+    if asm:
+        kinds = collections.Counter(a["kind"] for r in asm for a in r["assumptions"])
+        print(f"  decided only under an assumption: {len(asm)} rows   {dict(kinds)}")
     rb = collections.Counter(r.get("ref_basis") for r in recs if r["verdict"] == "FAIL")
     print(f"  FAIL by reference grade: {dict(rb)}   "
           f"(inferred-from-impl means torch's C++ is the authority, not a definition)")

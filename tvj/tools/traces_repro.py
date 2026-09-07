@@ -24,7 +24,7 @@ for rec in susp:
             xs = [(torch.rand(x.shape, generator=g)*2-1).cuda() if torch.is_tensor(x) else x
                   for x in ns["get_inputs"]()]
             with torch.no_grad():
-                a = TR.first(m(*xs)); b = TR.first(entry(*TR.bind_wrapper(entry, m, xs)))
+                a = TR.first(m(*xs)); b = TR.first(TR.call_wrapper(entry, m, xs))
                 worst = max(worst, float((a.float()-b.float()).abs().nan_to_num(1e30).max()))
         real = worst > 1e-4
         print(f"{rec['i']:<5} {cname:<22} {rec.get('obligation',''):<10} {worst:>28.4g}   "

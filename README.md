@@ -35,13 +35,25 @@ bugs"* that the approach cannot address:
   exponentials — exact over the reals, NaN in float32 above x = 44.
 - **A hardware gate.** A value FAIL is believed only if the GPU reproduces it at
   the witness point. Every false positive this project produced was caught there.
-- **AC normal form before any solver.** 232 of 246 KernelBook value decisions
+- **AC normal form before any solver.** 261 of 276 KernelBook value decisions
   finish without calling one; Volta's exponential-polynomial procedure and Z3
   case splitting are the second and third stages, not the first.
 - **A counterexample yields an axis**, which `tvj/judge/testgen.py` turns into a
   harness check that runs without the judge.
 - **Corpus scale and split**: 400 compiler-generated rows and 156 LLM-written
   ones, measured separately, because they fail in different ways.
+
+The two projects also bound the problem differently, and we measured whether the
+difference matters. They **truncate reductions** — sum a few terms instead of all
+of them — where we **shrink shapes** and keep every reduction whole. Both make
+the term DAG small; they are not the same approximation, since truncation can
+hide a defect that only appears past the cut. On 40 KernelBook rows with the cap
+at 4, **39 verdicts agree** and the one that differs is a PASS becoming UNKNOWN,
+not a missed defect (`tvj/measure/truncated.py`, `tvj/core/bounded.py`). The
+reason is mundane: these kernels reduce over 4–16 elements, so a cap of 4 barely
+bites. The measurement says the two choices are interchangeable *on this corpus*,
+not in general — a kernel whose reduction is where the bug lives would separate
+them, and neither corpus has one.
 
 Also relevant: [*The Correctness Illusion in LLM-Generated GPU
 Kernels*](https://arxiv.org/abs/2606.20128) makes the same starting observation
@@ -58,7 +70,7 @@ in a real corpus, none of them visible to the benchmark that was running:
 | mechanism | evidence |
 |---|---|
 | parameters left uninitialised — garbage compared against garbage | KernelBook row 17 |
-| output ~1e-4 under `atol=1e-3`, hiding a **191 % relative error** | KernelBook row 308 |
+| output ~1e-4 under `atol=1e-3`, hiding a **190 % relative error** | KernelBook row 308 |
 | parameters default to the **identity element** of the op they feed (`bias=0`, `scale=1`, `tau=0`), so a kernel that ignores them is bit-identical | 5 LLM-generated kernels; and KernelBench's own level2/85 |
 
 The last one survives KernelBench-Verified's hardening. Its hidden tests vary the
@@ -69,15 +81,34 @@ with the scale multiply **deleted** passes all four at max diff exactly `0`
 **A counterexample yields an axis, not just a point.** The judge reports which
 named buffers a disagreement rests on, so `tvj/judge/testgen.py` turns one exploit into a
 harness directive — *vary these parameters*, *poison this buffer*. Derived from a
-single kernel, it catches 3 of the 4 others it had never seen.
+single kernel, two directives catch all 7 of the exploits — and the corpus'
+own correctness check catches none of them.
 
-**Corpus results.** Of the kernels these corpora label correct, the judge rejects
-6 — every one reproduced on the GPU before being counted:
+**Corpus results.** On one criterion — *the corpus' own numeric check passes and
+the judge still FAILs* — there are 12, every one corroborated on hardware before
+being counted:
 
-| corpus | judged | judge rejects a "correct" kernel |
+| corpus | judged | tolerance passes, judge FAILs |
 |---|---|---|
-| 400 Inductor-generated (KernelBook) | 60 % | 2 — both defects in the dataset's own wrapper, not in Inductor's codegen |
-| 156 LLM-generated Triton | 58 % | 4 |
+| 400 Inductor-generated (KernelBook) | 76 % | 4 — at the judge's witness point the GPU shows up to 7.3 × 10³ |
+| 156 LLM-generated Triton | 63 % | 8 — 5 on `value`, 3 on `accuracy` |
+
+Two more sit just outside that count and are worth naming rather than rounding
+away: KernelBook row 17, where the tolerance verdict is itself random because the
+dataset leaves the parameters uninitialised (the first row of the table above),
+and LLM row 35, which the corpus labels correct while its own tolerance check
+disagrees.
+
+The pattern is the same in all of them: the benchmark's inputs do not reach the
+disagreement. Row 308 is attributed exactly — the wrapper permutes two
+same-shaped tensors, and `atol` hides a 190 % relative error
+(`tvj/measure/kb_critic.py`). The three `accuracy` rejects are one shape: a
+`tanh` spelled `(e^{2x}−1)/(e^{2x}+1)`, which is exact over the reals and NaN in
+float32 above x = 44.4 — the GPU is non-finite there and the reference is not.
+
+`python3 -m tvj.measure.limits` regenerates the coverage breakdown from the
+records rather than restating it; the hand-written version drifted every time a
+corpus was re-run.
 
 **An honest negative became the fifth obligation.** Catastrophic cancellation
 (`E[X²]−E[X]²`) was *not* caught for most of this project's life, and correctly
@@ -102,15 +133,23 @@ Five obligations, not one.
 | **precondition** | does the real-number proof still mean anything in float32? | interval analysis with three relational rules |
 | **accuracy** | the same expression, arranged so float32 loses digits? | float32-vs-float64 evaluation at shifted regimes |
 
-Only `value` is gated on hardware reproduction, at its own witness point — every
-false positive this project produced was caught there. The other four are not:
-hardware is structurally silent for them (a stale buffer holds the right answer,
-tf32 is ignored on sm_75), and gating them would discard exactly the defects a
-test cannot reach.
+Two of the five are gated on hardware reproduction. `value` is gated at its own
+witness point — every false positive this project produced was caught there. So
+is `accuracy`, but at the *regime that fired*: catastrophic cancellation is
+silent at the benchmark's inputs, which is the whole point of the obligation, and
+loud at the shifted inputs that made it fire, so a FAIL the GPU will not
+reproduce there is our modelling gap and is reported as UNKNOWN
+(`tvj/checks/acc_gate.py`).
+
+The other three are not gated, and must not be. Hardware is structurally silent
+for them — a stale buffer holds the right answer, tf32 is ignored on sm_75, a
+narrowed validity radius shows only at extreme inputs — so gating them would
+discard exactly the defects a test cannot reach, which is the reason the judge
+exists.
 
 `tvj/judge/judge.py` is the whole judgement — both corpus runners are thin adapters over
 it. `PIPELINE.md` has the data flow. `tvj/core/semantics.py` is the artifact underneath it
-all: 20 decisions the interpreter had to make because Triton does not answer them
+all: 22 decisions the interpreter had to make because Triton does not answer them
 — what a masked lane loads, whether i32 index arithmetic wraps — each with its
 basis and its evidence, four measured against hardware.
 
@@ -125,19 +164,107 @@ through both torch and the front-end and compares the numbers.
 
 ## Limits
 
-Judged coverage is ~60 %. Of what is left, roughly a third is UNKNOWN — the
-judge looked and could not decide (a torch tail it could not replay, a pair
-neither Volta nor Z3 separates, a term past the memory cap, an output that is
-not a function of the inputs at all). The other two thirds never entered the
-pipeline: a torch op the spec front-end does not model, a TTIR op the
-interpreter does not implement, a timeout, an adapter bug. The first group is
-the method's limit; the second is unpaid implementation debt, and most of the
-session's coverage gains came from paying some of it down.
+<!-- The table below is generated: `python3 -m tvj.measure.limits`.  Do not hand-edit
+     it.  The previous version was written by hand and every number drifted -- it
+     still said 125 LLM rows after the corpus was finished at 156, and quoted a
+     headline percentage that contradicted its own steerable column. -->
 
-Neither group is ever a false pass. Shapes are fixed and small; there is no
-data-dependent control flow; a FAIL on the value obligation is only believed if
-the GPU reproduces it at the witness point. All hardware measurements are
-`sm_75`.
+**Judged coverage.** 76 % of 400 Inductor-generated rows, 63 % of 156 LLM-written rows.
+
+|                                                            | KernelBook | LLM traces | can a generator steer into it?    |
+|------------------------------------------------------------|------------|------------|-----------------------------------|
+| the reference uses a torch op we do not model              | 12.5 %     | 3.2 %      | no — the task is given            |
+| the kernel uses a TTIR construct we do not model           | 4.5 %      | 1.9 %      | **yes**                           |
+| a torch tail after the kernels we could not replay         | 0.2 %      | 10.3 %     | yes, and see below                |
+| the candidate does not compile or run at all               | —          | 9.6 %      | no                                |
+| our caps: the 150 s alarm, 4 GB for Volta, the term budget | 3.8 %      | 3.2 %      | no — raise them on a real machine |
+| our plumbing failed to open the row                        | 0.2 %      | 1.3 %      | no                                |
+| the reference itself is random                             | 0.5 %      | 1.3 %      | no                                |
+| the row hangs the judge and never returns a verdict        | 0.2 %      | —          | no                                |
+| **the method genuinely cannot decide**                     | 2.0 %      | 6.4 %      | —                                 |
+
+KernelBook: a generator could steer into 4.8 % of rows (19/400); the method's own wall is 2.0 % (8/400).
+LLM traces: a generator could steer into 12.2 % of rows (19/156); the method's own wall is 6.4 % (10/156).
+
+the named constructs behind the steerable buckets
+  KernelBook:
+      6  float->int conversion of a symbolic value
+      5  comparison on an integer loaded from memory
+      3  extern transposed convolution
+      2  data-dependent integer arithmetic (integer loaded from memor
+      2  arith.uitofp of a comparison result (i1->float sign conventi
+  LLM traces:
+      1  scf.while
+      1  data-dependent integer arithmetic (integer loaded from memor
+      1  arith.uitofp of a comparison result (i1->float sign conventi
+
+The split that matters is not how much is left but **who controls whether a
+kernel lands there**. A reference op we do not model is fixed by the task, so no
+policy can aim at it. A TTIR construct we do not model is a target. On that
+reading the slice a generator could drift into is 4.8 % of KernelBook and 12.2 %
+of the LLM corpus -- and it is a list of named constructs, not a region. Most of
+the rest is unpaid implementation debt with the items written down; paying it
+down is the most useful work available.
+
+**The torch tail is the largest steerable bucket in the LLM corpus, and its fix
+is not ours to apply.** These are wrappers that finish the computation in PyTorch
+after the kernels; we replay what we can interpret and these are the residue.
+Requiring generation to emit a single fused Triton kernel removes the bucket
+entirely -- and that constraint is not a concession, because a torch tail also
+costs a kernel launch and a materialised intermediate. The constraint that makes
+a kernel analysable is the one that makes it fast.
+
+**What the method actually cannot do.** A loaded value used as an *address*. Our
+memory model maps concrete offsets to terms, so a symbolic index has no slot.
+That splits three ways and only the last is a wall: a scatter-*add* is order-free
+and has a denotation in the existing algebra (`out[j] = sum_i select(idx_i = j,
+v_i, 0)`); a scatter with provably distinct indices needs that plus a
+distinctness obligation, which is worth checking anyway; a scatter that may
+collide needs array theory *and* is order-dependent on real hardware, so "we
+cannot decide it" and "this kernel is nondeterministic" are the same fact.
+
+Above that sits the grid quantifier: we enumerate the grid concretely, which is
+why shapes must be fixed. Symbolic thread counts are solved for races
+(GPUVerify's two-thread reduction) and that reduction does not transfer to
+values, because an output depends on every program instance rather than a pair.
+
+Integers are the same story from the other side. They are concrete -- Python
+`int`s with real two's-complement wraparound -- and that concreteness is what
+makes the memory obligation decidable without a solver call: `store` is a dict
+keyed by `(buffer, offset)`, so out-of-bounds is a comparison and a write
+conflict is a lookup. Symbolic integers would buy symbolic shapes and cost that.
+
+**These numbers describe these two corpora.** Both are small GitHub modules and
+one-shot model answers. They systematically under-represent production kernels --
+tensor-parallel collectives, MoE routing, paged attention -- where symbolic
+addressing and dynamic shapes are the norm rather than the exception. Read the
+coverage as a property of the corpora, not of the method.
+
+**And nothing here has faced an adversary.** Every kernel judged was written
+without knowledge of this judge: Inductor is a compiler, and the LLM corpus is a
+model answering in good faith. What an RL policy would do to it is the open
+question, and it is not one this repository can answer.
+
+**What a false PASS would look like, and why we cannot rule one out.** A FAIL on
+`value` is believed only if the GPU reproduces it at the witness point, and one
+on `accuracy` only if the GPU reproduces it at the regime that fired; every false
+positive this project produced was caught at one of those. Nothing plays that
+role in the other direction. A PASS rests on the reference being right, and the
+reference is the one thing nothing downstream can check -- a wrong handler makes
+a correct kernel FAIL, which is loud, and can make a wrong kernel PASS, which is
+silent.
+
+That is not hypothetical. `STensor` had no `__eq__`, so `mask == 0` evaluated to
+Python `False` and `attn.masked_fill(mask == 0, -1e9)` built a reference with the
+mask deleted; a kernel that also dropped the mask would have matched it. It was
+found by reading the class against `torch.Tensor`, not by any test, and the
+regression cases for it were added afterwards (`tvj/checks/spec_agree.py`). The
+honest claim is the process, not the outcome: 113 handler-vs-torch cases, a
+signature cross-check, a term-algebra fuzzer with proven teeth, and every
+reference whose edge semantics were recovered from torch's C++ rather than a
+published definition marked as such in the verdict.
+
+All measurements are `sm_75`.
 
 ---
 
@@ -145,7 +272,7 @@ the GPU reproduces it at the witness point. All hardware measurements are
 
 | 스크립트 | 무엇을 하나 |
 |---|---|
-| `tvj/core/semantics.py` | **스펙 산출물.** 코어 26 op에 대한 20개 의미론 결정, 근거 등급·증거 포함 |
+| `tvj/core/semantics.py` | **스펙 산출물.** 코어 26 op에 대한 22개 의미론 결정, 근거 등급·증거 포함 |
 | `tvj/judge/judge.py` | **판정 코어.** 후보 하나 → 다섯 의무 + 하드웨어 게이트. 두 코퍼스 러너가 공유한다 |
 | `tvj/checks/check.py` | 커널 vs 스펙 / 커널 vs 커널 refinement. 값 의무 + 정밀도 의무 |
 | `tvj/checks/suite.py` `tvj/front/shapes.py` | 커널 계약이 허용하는 잔여 클래스를 최소 비용으로 덮는 shape 선택 |
@@ -160,7 +287,7 @@ the GPU reproduces it at the witness point. All hardware measurements are
 | `tvj/front/capture.py` `tvj/checks/capture_test.py` | **실행 가로채기 심판**: 생성 코드의 실제 GPU 런치를 후킹, 스토리지 identity로 역할 매핑 |
 | `tvj/judge/kernelbook_run.py` `tvj/tools/kb_debug.py` | KernelBook(PyTorch↔Inductor Triton, 18K쌍) 코퍼스 어댑터 |
 | `tvj/judge/traces_run.py` `tvj/tools/traces_repro.py` | LLM 생성 Triton 코퍼스 어댑터 + 모든 FAIL의 GPU 재현 |
-| `tvj/judge/testgen.py` `tvj/checks/testgen_validate.py` | 반례 → 축 → 하니스 지시문. 하나에서 뽑은 지시문이 못 본 4개 중 3개를 잡는지 |
+| `tvj/judge/testgen.py` `tvj/checks/testgen_validate.py` | 반례 → 축 → 하니스 지시문. 지시문 둘이 7개 익스플로잇을 전부 잡는지 |
 | `tvj/measure/kb_blindspot.py` `tvj/measure/kbv_blindspot.py` | 벤치마크가 모델을 한 번만 만들기 때문에 생기는 맹점 — KernelBench와 그 강화판 양쪽에서 재현 |
 | `tvj/measure/harness_fixes.py` | 정직한 반대편: 심볼릭 기계 없이 싼 하니스가 스스로 막을 수 있는 양 |
 | `tvj/tools/memcheck.py` | 메모리 FAIL이 진짜인지, 우리가 후킹 못 한 op이 쓴 것인지 가르는 진단기 |
@@ -195,7 +322,8 @@ RealDomain ──→ 값 의무:  AC 정규형 (합-곱) → Volta (exp, 나눗�
            ──→ 전제조건:  ranges.py (overflow / div-by-zero 치명, underflow 표시)
            ──→ 정확도 의무:  같은 항을 f32/f64로 두 번 평가, shift 레짐에서 오차 비교
                             │
-                  하드웨어 게이트 (값 의무에만): 증인점에서 GPU가 재현 못하면 UNKNOWN
+                  하드웨어 게이트 (값·정확도 의무): 값은 증인점에서, 정확도는 발화한
+                  레짐에서 GPU가 재현 못하면 UNKNOWN
 ConcreteDomain ─→ float32 실행 → GPU와 미분 테스트
 ```
 
@@ -254,17 +382,28 @@ Inductor가 생성한 Triton 18,162쌍 중 앞 400행 (`results/report.txt`).
 
 | 판정 | 행 | |
 |---|---:|---|
-| PASS | 193 | 48.2% — AC 정규형으로 143, Volta로 50 |
-| FAIL | 21 | 전부 수치 증인 첨부 |
-| 스펙 미지원 | 51 | adaptive_avg_pool2d, max_pool2d, 데이터 의존 비교, … |
-| 커널 미지원 | 47 | 조각별 select(Huber/ELU/Mish/argmax) 29, float→int 6, transposed conv 3 |
-| 스펙 에러 | 33 | torch 표면의 남은 구멍 |
-| TIMEOUT | 27 | 256폭 MLP의 심볼릭 matmul(4M 항), 큰 attention |
-| UNKNOWN | 22 | Volta 예산 6, tanh 4, 미기록 버퍼 의존, 증명 불가·수치 동일 3 |
+| PASS | 272 | 68.0% — AC 정규형 261, Volta 14, Volta+Z3 1 |
+| PASS-ASSUMING | 4 | scatter의 인덱스 단사성처럼, 못 갚고 명시만 한 가정 위의 PASS |
+| FAIL | 28 | 전부 수치 증인 첨부 |
+| 스펙 에러 | 29 | torch 표면의 남은 구멍. `STensor`가 아직 못 받는 것들 |
+| 스펙 미지원 | 21 | einsum 3, unfold 2, prelu 2, pad(replicate) 2, BCE 2, … |
+| 커널 미지원 | 18 | float→int 6, 로드한 정수 비교 5, transposed conv 3, 데이터 의존 정수 산술 2, i1→float 2 |
+| UNKNOWN | 17 | Volta 예산 6, 증명 불가·수치 동일 4, Volta 4GB 2, 하드웨어 침묵 2, … |
+| TIMEOUT / TOO-LARGE | 7 | 넓은 MLP의 심볼릭 matmul, 큰 attention |
+| NONDETERMINISTIC / ERROR | 3 | |
 
-판정된 214행에서 **tolerance 테스트와 심판: 213 일치, 1 불일치, 반대 방향(테스트 실패·심판 PASS) 0.**
-세 의무: 정밀도 태그 213 exact / 1 f16, 전제조건에서 커널이 스펙보다 나쁜 행 0,
-신뢰한 extern(cuBLAS/cuDNN) 호출 249건(109행). 심볼릭 실행 중앙값 0.06s, p90 0.7s.
+372행은 판정 중 멈춰서 기록이 없다 (`run_resume.sh`가 스텝오버). 그래서 399/400.
+
+판정된 304행에서 **tolerance 테스트와 심판: 296 일치, 8 불일치.** 불일치는 전부 한 방향이다
+— tolerance가 통과시킨 4행을 심판이 FAIL로 잡았고 (증인점에서 GPU가 재현),
+tolerance가 떨어뜨린 24행은 심판도 FAIL이다. **반대 방향(테스트 실패·심판 PASS)은 0.**
+
+세 의무: 정밀도 태그 275 exact / 1 tf32·f16, 전제조건에서 커널이 스펙보다 나쁜 행 0,
+신뢰한 extern(cuBLAS/cuDNN) 호출 668건(223행). 심볼릭 실행 중앙값 0.17s, p90 1.44s.
+
+AC 정규형이 261/276을 끝내는 것은 위임(`tvj/decide/delegate.py`) 덕이다 — 양변이 같은
+라이브러리 호출에 같은 인자를 넘기면 같은 기호가 되고, hash-consing이 공짜로 판정한다.
+위임 전에는 그 자리가 O(M·N·K) 항 전개였다.
 
 테스트가 놓치고 심판이 잡은 것 둘:
 - **row 17 GatSymAttention** — 위 절. 입력 순서 뒤바뀜, 데이터셋 테스트는 미초기화 파라미터로 공허.

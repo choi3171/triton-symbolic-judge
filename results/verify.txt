@@ -1,37 +1,40 @@
-  ok    check.py            5.4s  10/10 hand-picked verdicts (3 correct kernels pass, bugs fail)
+  ok    check.py            5.2s  10/10 hand-picked verdicts (3 correct kernels pass, bugs fail)
   skip  suite.py         9/9 kernels judged correctly over contract-driven shapes; bug_swizzle caught at (48,48,48) unaided  (--all)
   ok    overflow.py         1.0s  i32 index arithmetic wraps: verdict flips to OOB at offset -2147483648
-  ok    precision.py        2.0s  real equality proves too much; precision lattice restores direction
+  ok    precision.py        1.9s  real equality proves too much; precision lattice restores direction
   skip  scale.py         cost is Theta(M*N*K): DAG nodes 32^3 -> 64^3 grow ~8x, no SMT  (--all)
-  ok    difftest.py         3.7s  [sm_75] int.width wraps on hardware; masked load reads 0.0 with no `other` operand
-  ok    ieee_gap.py         3.3s  [sm_75] reduce is a tree not a left fold; split-K atomics 8/8 distinct; proved-equal kernels differ in float32
-  ok    layout2.py          3.0s  [sm_75] reduce order is layout- and version-dependent: num_warps in {2,4,8} lose exactly one 1.0; under Triton 3.5.1 num_warps=1 loses sizePerThread-1 (sequential within a thread), under 3.8.0 it lost one (pairwise)
-  ok    tf32.py             3.0s  [sm_75] input_precision=tf32 is a permission: ignored on sm_75, bitwise equal to ieee
-  ok    difftest_mm.py      3.1s  [sm_75] whole-kernel: semantics and GPU are equally far from float64
-  ok    semantics.py        0.0s  21 decisions, none open
+  ok    difftest.py         3.2s  [sm_75] int.width wraps on hardware; masked load reads 0.0 with no `other` operand
+  ok    ieee_gap.py         3.0s  [sm_75] reduce is a tree not a left fold; split-K atomics 8/8 distinct; proved-equal kernels differ in float32
+  ok    layout2.py          2.8s  [sm_75] reduce order is layout- and version-dependent: num_warps in {2,4,8} lose exactly one 1.0; under Triton 3.5.1 num_warps=1 loses sizePerThread-1 (sequential within a thread), under 3.8.0 it lost one (pairwise)
+  ok    tf32.py             2.8s  [sm_75] input_precision=tf32 is a permission: ignored on sm_75, bitwise equal to ieee
+  ok    difftest_mm.py      2.9s  [sm_75] whole-kernel: semantics and GPU are equally far from float64
+  ok    semantics.py        0.0s  22 decisions, none open
   ok    volta_check.py      1.1s  Volta bridge: 7/7 identities; softmax naive==safe 16/16 and 128/128
-  ok    volta_attn.py       3.4s  attention ref/safe/flash pairwise 512/512 equal at L=32
-  ok    volta_attn.py      14.2s  attention at L=64 (4 key blocks): 1024/1024
+  ok    volta_attn.py       3.2s  attention ref/safe/flash pairwise 512/512 equal at L=32
+  ok    volta_attn.py      12.7s  attention at L=64 (4 key blocks): 1024/1024
   skip  volta_attn.py    attention at L=128 (8 key blocks): 2048/2048  (--all)
-  ok    volta_neg.py        4.8s  buggy flash (no rescale) rejected: 512 false
+  ok    volta_neg.py        4.2s  buggy flash (no rescale) rejected: 512 false
   ok    checksm.py          1.1s  softmax: AC normal form fails (0/8), Volta decides (8/8)
-  ok    spec_test.py        8.1s  torch-style reference code produces the kernels' terms: matmul AC, softmax/attention via Volta, buggy flash 0/512
+  ok    spec_test.py        7.9s  torch-style reference code produces the kernels' terms: matmul AC, softmax/attention via Volta, buggy flash 0/512
   ok    capture_test.py     4.7s  [sm_75] judging by intercepting real GPU launches: mm_tiled, split-K, flash all recovered and verified
-  ok    kernelbook_run.py  117.7s  [sm_75] KernelBook rows 0-40: >=28 PASS all with tol=True; every value FAIL carries a numeric witness the GPU then reproduces
+  ok    kernelbook_run.py  129.2s  [sm_75] KernelBook rows 0-40: >=28 PASS all with tol=True; every value FAIL carries a numeric witness the GPU then reproduces
   ok    kernelbook_run.py    4.7s  [sm_75] KernelBook row 17: judge FAILs with a numeric witness the GPU reproduces, where the dataset's own tolerance test is vacuous (uninitialised params, flagged DEGEN)
-  ok    kb_critic.py        5.6s  [sm_75] KernelBook row 308: judge's FAIL attributed exactly -- wrapper permutes same-shaped tensors; tolerance test hides a 190% relative error behind atol
-  ok    reward_hack_lit.py    5.2s  [sm_75] documented reward hacks: Sakana's stale-buffer reuse is caught by the memory obligation where both the tolerance test and its sign-flip mitigation pass
-  ok    reward_hack_lit.py    4.9s  [sm_75] unstable variance: equal over the reals (value=pass is CORRECT) and the precondition FAIL is a false positive -- caught only by the accuracy obligation it created
-  ok    spec_sigcheck.py    1.6s  every spec handler agrees with torch: no swallowed, mis-positioned, or declared-and-unread argument
-  ok    spec_agree.py       1.7s  the spec front-end computes what torch computes: 110 cases including the full pooling flag sweep and every indirect-read spelling, plus 3 modes it must refuse
-  ok    delegate_test.py   64.2s  delegated library ops: the two spellings share a symbol, nothing else does, small operands are untouched, and a pair the shortcut cannot settle is expanded rather than reported
+  ok    kb_critic.py        5.1s  [sm_75] KernelBook row 308: judge's FAIL attributed exactly -- wrapper permutes same-shaped tensors; tolerance test hides a 190% relative error behind atol
+  ok    reward_hack_lit.py    9.0s  [sm_75] documented reward hacks: Sakana's stale-buffer reuse is caught by the memory obligation where both the tolerance test and its sign-flip mitigation pass
+  ok    reward_hack_lit.py    4.7s  [sm_75] unstable variance: equal over the reals (value=pass is CORRECT) and the precondition FAIL is a false positive -- caught only by the accuracy obligation it created
+  ok    spec_sigcheck.py    1.8s  every spec handler agrees with torch: no swallowed, mis-positioned, or declared-and-unread argument
+  ok    spec_agree.py       2.3s  the spec front-end computes what torch computes: 113 cases including the full pooling flag sweep, every indirect-read spelling and `==` as a mask, plus 3 modes it must refuse
+  ok    delegate_test.py   62.5s  delegated library ops: the two spellings share a symbol, nothing else does, small operands are untouched, and a pair the shortcut cannot settle is expanded rather than reported
   ok    op_coverage.py      0.3s  the corpora's 556 reference modules use 130 distinct ops in forward; 50 cover three quarters of them
-  ok    undecided.py       32.4s  the pairs neither Volta nor Z3 separates are a 5-second budget, not a gap between the two procedures
-  ok    kb_blindspot.py     2.5s  [sm_75] KernelBench's own correctness loop builds the model once, so a kernel that ignores a parameter whose default is the identity element is bit-identical to the reference
-  ok    harness_fixes.py    3.2s  [sm_75] honest counterpoint: how much of this a cheap harness stops on its own, with no symbolic machinery
-  ok    testgen_validate.py    3.5s  [sm_75] an axis generalises where a point does not: two directives, each derived from one exploit, catch all 7 -- and the corpus' own check catches none of them
-  ok    metamorphic.py      7.9s  term-algebra properties over 10 seeds x 4000 random terms: a constructor returns what it was asked for, and a term computes what its construction meant
+  ok    undecided.py       32.0s  the pairs neither Volta nor Z3 separates are a 5-second budget, not a gap between the two procedures
+  ok    kb_blindspot.py     2.6s  [sm_75] KernelBench's own correctness loop builds the model once, so a kernel that ignores a parameter whose default is the identity element is bit-identical to the reference
+  ok    harness_fixes.py    3.5s  [sm_75] honest counterpoint: how much of this a cheap harness stops on its own, with no symbolic machinery
+  ok    testgen_validate.py    4.5s  [sm_75] an axis generalises where a point does not: two directives, each derived from one exploit, catch all 7 -- and the corpus' own check catches none of them
+  ok    indirection.py      2.7s  the four indirect-access shapes: a gather and a scatter-add are decided outright, a scatter only under a recorded assumption, and a branch on loaded data is refused
+  ok    metamorphic.py      7.0s  term-algebra properties over 10 seeds x 4000 random terms: a constructor returns what it was asked for, and a term computes what its construction meant
   ok    accuracy_test.py    0.0s  the accuracy obligation fires on cancellation and stays silent on mere reassociation
-  ok    precond2.py        40.2s  float-validity preconditions: naive softmax |x|<=86.64, safe softmax unbounded; naive attention overflows at |q|,|k|<=10
+  ok    acc_gate.py         3.3s  [sm_75] accuracy is the ONE obligation that is hardware-gated: the cancellation is silent at the benchmark's inputs and loud at the regime it fired in, so a FAIL hardware will not reproduce THERE is downgraded to UNKNOWN
+  ok    branch_test.py      0.0s  block arguments are bound across a `cf` branch: `^bb1(%5: f32)` declares %5 and no op assigns it, so an unbound argument used to kill the row with a KeyError and report it as ERROR
+  ok    precond2.py        39.1s  float-validity preconditions: naive softmax |x|<=86.64, safe softmax unbounded; naive attention overflows at |q|,|k|<=10
 
-32/32 claims reproduce
+35/35 claims reproduce

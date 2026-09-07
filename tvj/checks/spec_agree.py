@@ -57,6 +57,15 @@ CASES = [
      dict(x=(2, 3))),
     ("relu(inplace=True)",        lambda x: F.relu(x * 1.0, inplace=True), dict(x=(3, 4))),
     ("mm",                        lambda a, b: torch.mm(a, b),           dict(a=(3, 4), b=(4, 2))),
+    # -- `==` returned a Python bool, so a mask built with it vanished from the
+    #    reference: `masked_fill(mask == 0, -1e9)` became `select(0.0, -1e9, x)`.
+    #    `int:2` draws the mask as 0/1 so the branch is actually taken.
+    ("masked_fill(m == 0)",       lambda x, i: x.masked_fill(i == 0, -1000000000.0),
+     dict(x=(3, 4), i=(3, 4)), "int:2"),
+    ("where(m == 0, x, y)",       lambda x, y, i: torch.where(i == 0, x, y),
+     dict(x=(3, 4), y=(3, 4), i=(3, 4)), "int:2"),
+    ("(x == y) as a value",       lambda x, i: (i == 0) * x,
+     dict(x=(3, 4), i=(3, 4)), "int:2"),
     # -- the reductions and shapes everything else rests on ---------------------
     ("sum(dim=0, keepdim)",       lambda x: x.sum(dim=0, keepdim=True),  dict(x=(3, 4))),
     ("amax(dim=-1)",              lambda x: x.amax(dim=-1),              dict(x=(3, 4))),

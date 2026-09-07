@@ -228,6 +228,13 @@ class Grid:
         self.writer = {}                # (buf, off) -> pid that wrote it
         self.errors = []
         self.benign = 0                 # same-value stores from different programs
+        # Assumptions the recorded terms are only meaningful under.  A scatter to a
+        # data-dependent address is the first of these: the value it leaves behind
+        # is well defined exactly when the indices are injective, and that is a
+        # property of the INPUT, not of the kernel, so it cannot be proved here --
+        # only stated.  Kept beside the store so nothing can read the terms without
+        # also being able to read what they depend on.
+        self.assumptions = []           # (kind, buf, detail)
 
     def write(self, buf, off, val, pid, atomic=False, dom=None):
         if not (0 <= off < self.bufsize[buf]):
@@ -307,6 +314,51 @@ class Interp:
     # index) by congruence, but can only say "equal", never "differs here".
     GATHER_EXPAND = 1024
 
+    def scatter_store(self, sym, lanes):
+        """`tl.store(dst + idx, v)` -- a write whose address was loaded.
+
+        The value left in slot j is the one written by whichever lane has
+        `idx = j`, so the denotation is the same finite choice a gather is:
+
+            dst[j] = select(idx_0 = j, v_0, select(idx_1 = j, v_1, ... dst[j]))
+
+        Nested this way it says "the first matching lane wins", and THAT is a
+        choice we are not entitled to make: the hardware does not order two
+        stores to the same address.  The term is correct exactly when at most one
+        lane matches, which is a property of the index DATA and cannot be proved
+        from the kernel.  So it is recorded as an assumption rather than proved,
+        beside the store, in the same shape as the float-validity precondition:
+        the real-number statement is true within a stated region and not outside.
+
+        A caller that cannot discharge `index-distinct` has learned something
+        real -- an unguarded scatter IS order-dependent, and that is the finding
+        rather than a limitation."""
+        if len(sym) != len(lanes):
+            raise Unsupported("scatter mixing symbolic and concrete addresses")
+        bufs = {q.buf for q, _, _ in sym}
+        if len(bufs) != 1:
+            raise Unsupported("scatter across more than one buffer")
+        if any(isinstance(m, Pred) for _, _, m in sym):
+            raise Unsupported("scatter under a mask derived from a float comparison")
+        buf = bufs.pop(); n = self.g.bufsize[buf]
+        if n > self.GATHER_EXPAND:
+            raise Unsupported(f"scatter over {n} slots > {self.GATHER_EXPAND}")
+        self.g.assumptions.append(
+            ("index-distinct", buf,
+             f"{len(sym)} lanes store to a data-dependent address in `{buf}`; the "
+             f"result is well defined only if their indices are pairwise distinct"))
+        for j in range(n):
+            # the innermost default is whatever is already there, so a second
+            # program instance composes with the first instead of conflicting
+            out = self.g.store.get((buf, j)) or self.g.read(buf, j, self.pid, self.dom)
+            for q, val, m in reversed(sym):
+                if not m: continue
+                idx = q.idx if not q.base else T.add(q.idx, T.const(float(q.base)))
+                out = T.select(T.cmp("eq", idx, T.const(float(j))), val, out)
+            self.g.store[(buf, j)] = out
+            self.g.kind[(buf, j)] = "store"
+            self.g.writer[(buf, j)] = ("current", self.pid)
+
     def gather(self, q, dom):
         """A read whose offset was loaded from memory.
 
@@ -360,8 +412,11 @@ class Interp:
         still refused, by `_pred_bool` below."""
         if len(T._pool) > TERM_BUDGET:
             raise TermBudget(f"term budget exceeded ({len(T._pool):,} > {TERM_BUDGET:,})")
-        labels = {op.results[0]: i for i, op in enumerate(ops)
-                  if op.name == "^block" and op.results} if any(
+        # The label is in the raw text, not in `results` -- the parser puts the
+        # block's ARGUMENTS there, so a block with no arguments had no entry at all
+        # and every branch reported an unknown target.
+        labels = {m.group(1): i for i, op in enumerate(ops)
+                  if op.name == "^block" and (m := re.match(r"\^(bb\w+)", op.raw))} if any(
                       o.name in ("cf.br", "cf.cond_br") for o in ops) else None
         if labels is None:                          # the common case: straight line
             for op in ops:
@@ -374,24 +429,41 @@ class Interp:
             if steps > cap: raise Unsupported("branch loop did not terminate")
             op = ops[pc]; self.covered.add(op.name)
             if op.name == "cf.br":
-                pc = self._branch_target(labels, op, 0); continue
+                pc = self._branch_target(labels, ops, op, 0, env); continue
             if op.name == "cf.cond_br":
                 c = self._pred_bool(self.get(env, op.operands[0]))
-                pc = self._branch_target(labels, op, 1 if c else 2); continue
+                pc = self._branch_target(labels, ops, op, 1 if c else 2, env); continue
             if op.name == "tt.return":
                 return
             self.exec_op(op, env)
             pc += 1
 
-    def _branch_target(self, labels, op, which):
-        """`cf.cond_br %c, ^bbT(...), ^bbF(...)` -- the label names are in the raw
-        text, since the parser keeps operands and successors in one list."""
-        tgts = re.findall(r"\^(bb\w+)", op.raw)
-        if which > 0: tgts = tgts[which - 1:]
-        if not tgts: raise Unsupported(f"branch with no successor: {op.raw[:60]}")
-        for name in ("^" + tgts[0], tgts[0]):
-            if name in labels: return labels[name] + 1
-        raise Unsupported(f"branch to an unknown block `{tgts[0]}`")
+    def _branch_target(self, labels, ops, op, which, env):
+        """`cf.cond_br %c, ^bbT(%5 : i32), ^bbF` -- the successors, and the
+        arguments each one passes, live only in the raw text: the parser
+        flattens the condition and both argument groups into one `operands`
+        list, where they can no longer be told apart.
+
+        The arguments have to be BOUND.  `^bb1(%5: f32)` DECLARES `%5`, and no
+        op assigns it, so leaving the branch's argument unbound made every block
+        that carries a value -- a loop counter, an accumulator -- die on a
+        KeyError and be reported as ERROR instead of judged."""
+        succ = re.findall(r"\^(bb\w+)(?:\(([^)]*)\))?", op.raw)
+        if which > 0: succ = succ[which - 1:]
+        if not succ: raise Unsupported(f"branch with no successor: {op.raw[:60]}")
+        name, arglist = succ[0]
+        if name not in labels:
+            raise Unsupported(f"branch to an unknown block `{name}` "
+                              f"(blocks here: {sorted(labels)})")
+        i = labels[name]
+        params = ops[i].results
+        args = re.findall(r"%[\w#]+", arglist.split(":")[0]) if arglist else []
+        if len(args) != len(params):
+            raise Unsupported(f"branch passes {len(args)} argument(s) to `^{name}`, "
+                              f"which declares {len(params)}")
+        vals = [self.get(env, x) for x in args]        # read every argument BEFORE
+        for q, v in zip(params, vals): env[q] = v      # writing: a block may pass its own
+        return i + 1
 
     def _pred_bool(self, v):
         """A branch condition has to be decidable here: this interpreter walks one
@@ -537,7 +609,19 @@ class Interp:
             el = P.elem_of(op.rtype)
             put(Tile(shape, [self.dom.cast(u, el) for u in bcast(a(0), shape).data]))
         elif n in ("arith.sitofp", "arith.uitofp"):
-            put(Tile(shape, [self.dom.const(float(u)) for u in bcast(a(0), shape).data]))
+            # `float(u)` on anything but a concrete number raised a bare TypeError
+            # and the row was charged to the judge as ERROR.  Both cases have an
+            # answer -- a predicate is select(p, 1, 0), a loaded integer is the
+            # symbolic-integer question -- but the i1 sign convention here is
+            # unverified, so say which one it is rather than guessing.
+            out = []
+            for u in bcast(a(0), shape).data:
+                if isinstance(u, (Pred, _PredTerm)):
+                    raise Unsupported(f"{n} of a comparison result (i1->float sign convention unverified)")
+                if isinstance(u, T.Term):
+                    raise Unsupported(f"{n} of an integer loaded from memory")
+                out.append(self.dom.const(float(u)))
+            put(Tile(shape, out))
         elif n in ("arith.fptosi", "arith.fptoui"):
             raise Unsupported("float->int conversion of a symbolic value")
         elif n == "arith.cmpf":
@@ -596,14 +680,19 @@ class Interp:
             pshape = P.shape_of(op.rtype)
             p, v = bcast(a(0), pshape), bcast(a(1), pshape)
             mask = bcast(a(2), pshape).data if len(op.operands) > 2 else [True]*numel(pshape)
-            for q, val, m in zip(p.data, v.data, mask):
-                if isinstance(q, SymPtr):
-                    raise Unsupported("data-dependent write address (scatter): the store is "
-                                      "keyed by concrete offset, and a symbolic one has no slot")
-                if m: self.g.write(q.buf, q.off, val, self.pid, dom=self.dom)
+            lanes = list(zip(p.data, v.data, mask))
+            sym = [(q, val, m) for q, val, m in lanes if isinstance(q, SymPtr)]
+            if sym:
+                self.scatter_store(sym, lanes)
+            else:
+                for q, val, m in lanes:
+                    if m: self.g.write(q.buf, q.off, val, self.pid, dom=self.dom)
         elif n == "tt.atomic_rmw":
             kind = _ATOMIC.search(raw).group(1)
-            assert kind == "fadd", f"unsupported atomic {kind}"
+            # An `assert` here is stripped by `python -O`, which would silently model
+            # atomic_max / atomic_xchg / atomic_and as an ADD.  A refusal also lands in
+            # KERNEL-UNSUPPORTED rather than ERROR, which is where it belongs.
+            if kind != "fadd": raise Unsupported(f"atomic_rmw `{kind}` (only fadd is modelled)")
             p, v = bcast(a(0), shape), bcast(a(1), shape)
             mask = bcast(a(2), shape).data if len(op.operands) > 2 else [True]*numel(shape)
             lanes = list(zip(p.data, v.data, mask))
@@ -642,7 +731,7 @@ class Interp:
         elif n == "tt.dot":
             A, B, C = a(0), a(1), a(2)
             M, Kd = A.shape; Kd2, N = B.shape
-            assert Kd == Kd2
+            if Kd != Kd2: raise Unsupported(f"tt.dot inner dimensions {Kd} vs {Kd2}")
             Kd = _B.limit(Kd)                # bounded.py: the other way to bound
             pm = _PREC.search(raw); prec = pm.group(1) if pm else "ieee"
             out = []
@@ -740,6 +829,7 @@ _INT_BIN = {
     "divsi": lambda a, b: int(a / b) if b else 0,
     "remsi": lambda a, b: a - b * int(a / b) if b else 0,
     "andi": lambda a, b: (a and b) if isinstance(a, bool) else a & b,
+    "xori": lambda a, b: (a != b) if isinstance(a, bool) else a ^ b,
     "ori":  lambda a, b: (a or b) if isinstance(a, bool) else a | b,
     "maxsi": max, "minsi": min,
 }

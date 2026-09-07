@@ -16,15 +16,20 @@ of inputs, and those inputs.  Everything after that is shared:
   precondition  float-validity radius not narrower than the reference form's
   accuracy      not a numerically worse arrangement of the same real expression
 
-A FAIL on `value` carries a concrete counterexample, so it must reproduce on the
-GPU at that point or it is downgraded to UNKNOWN -- every false positive this
-project produced was caught there.  The other obligations are deliberately NOT
-gated that way: hardware is structurally silent for them (a stale buffer holds
-the right answer, tf32 is ignored on sm_75, a narrowed validity radius shows
-only at extreme inputs), so gating would discard exactly the defects a test
-cannot reach, which is the whole reason the judge exists.
+Two of the five are gated on hardware reproduction.  A FAIL on `value` carries a
+concrete counterexample, so it must reproduce on the GPU at that point or it is
+downgraded to UNKNOWN -- every false positive this project produced was caught
+there.  `accuracy` is gated too, but at the REGIME THAT FIRED rather than at a
+point: cancellation is silent at the benchmark's inputs, which is the obligation's
+whole premise, and loud at the shifted inputs that made it fire.
+
+`memory`, `precision` and `precondition` are deliberately NOT gated: hardware is
+structurally silent for them (a stale buffer holds the right answer, tf32 is
+ignored on sm_75, a narrowed validity radius shows only at extreme inputs), so
+gating them would discard exactly the defects a test cannot reach, which is the
+whole reason the judge exists.
 """
-import collections, copy, inspect, signal, time, torch
+import collections, copy, inspect, signal, time, traceback, torch
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -44,9 +49,22 @@ try: from tvj.core.sexec import RANK_NAME as INV
 except ImportError: INV = {v: k for k, v in RANK.items()}
 
 BUDGET = 200_000_000
+# Ops whose OUTPUT IS the random draw, so lifting it to an input role is sound.
+# The distinction matters: `native_dropout` returns (result, mask) and the mask is
+# boolean, so a naive "take the float outputs" would pick up the RESULT and hand
+# the reference the kernel's own answer as its randomness -- which passes anything.
+# Ops that merely consume randomness stay refused until their draw can be named.
+DRAW_OPS = ("randn", "rand", "randint", "normal", "normal_functional", "bernoulli",
+            "randn_like", "rand_like", "randperm")
+CONSUMES_RNG = ("native_dropout", "dropout", "_fused_dropout", "rrelu_with_noise")
 # What the reference's output dtype says its own precision contract is.
 REF_RANK = {torch.float64: TOP, torch.float32: TOP,
             torch.float16: RANK["f16"], torch.bfloat16: RANK["bf16"]}
+# How much relative disagreement at the firing regime counts as the hardware
+# reproducing an accuracy FAIL.  float32 eps is 1.2e-7; cancellation shows up
+# orders of magnitude above that, and below this bar we would be charging the
+# kernel for ordinary rounding.
+ACC_GATE_REL = 1e-4
 FATAL = ("overflow", "div-by-zero")          # precondition flags that make a result meaningless
 
 class Timeout(Exception): pass
@@ -104,6 +122,23 @@ def prepare_scalars(model):
     return syms
 
 
+# torch CUDA kernels that abort the process's whole CUDA context on an
+# out-of-domain input instead of raising.  Consulted only when no CPU clone could
+# be made, to decide whether refusing inputs is worth the evidence it costs.
+ASSERT_MODULES = ("BCELoss", "BCEWithLogitsLoss", "Embedding", "EmbeddingBag", "NLLLoss",
+                  "CrossEntropyLoss", "MultiLabelMarginLoss", "MultiMarginLoss")
+ASSERT_FUNCS = ("binary_cross_entropy", "embedding", "nll_loss", "cross_entropy",
+                "one_hot", "gather", "scatter", "index_select", "index_put")
+
+def assert_risk(model):
+    """What in this reference could take the CUDA context down, if anything."""
+    for m in model.modules():
+        if type(m).__name__ in ASSERT_MODULES: return type(m).__name__
+    try: src = inspect.getsource(type(model).forward)
+    except Exception: return "unknown (forward source unavailable)"
+    return next((f for f in ASSERT_FUNCS if f in src), None)
+
+
 def make_probe(cand):
     """Would the reference even accept these inputs?
 
@@ -124,12 +159,25 @@ def make_probe(cand):
     these asserts."""
     try:
         cpu = copy.deepcopy(cand.model).cpu()
-    except Exception:
-        return lambda xs: True
+    except Exception as e:
+        # No CPU clone means no way to ask the domain question at all.  Waving
+        # every input through is exactly what this function exists to prevent, so
+        # refuse them -- but only where a device-side assert is actually on the
+        # table, since everywhere else the probe has nothing to protect and
+        # refusing would throw away the row's hardware evidence for nothing.
+        risk = assert_risk(cand.model)
+        probe = (lambda xs: False) if risk else (lambda xs: True)
+        probe.why = (f"no CPU clone ({type(e).__name__}: {str(e)[:40]}); "
+                     + (f"refusing every input, the reference contains `{risk}`" if risk
+                        else "nothing in the reference carries a device-side assert"))
+        return probe
     def probe(xs):
         try:
             cpu.load_state_dict(cand.model.state_dict())
-        except Exception: pass
+        except Exception as e:
+            # the clone keeps whatever parameters it was copied with, and the judge
+            # mutates the reference's; say so rather than silently probing a stale model
+            probe.stale = f"{type(e).__name__}: {str(e)[:40]}"
         try:
             with torch.no_grad():
                 cpu(*[x.detach().cpu() if torch.is_tensor(x) else x for x in xs])
@@ -258,6 +306,7 @@ def judge(cand, timeout=150, tol_trials=5):
     signal.alarm(timeout)
     gate = {}                                   # populated once the GPU run has happened
     probe = make_probe(cand)                    # keeps our own inputs off the GPU's asserts
+    if getattr(probe, "why", None): rec["probe_unavailable"] = probe.why
 
     def accuracy_gpu(regime):
         """Run both sides at the regime the accuracy obligation fired in.
@@ -277,9 +326,13 @@ def judge(cand, timeout=150, tol_trials=5):
             with torch.no_grad():
                 a = first(cand.model(*xs)).float(); b = first(cand.run(xs)).float()
             bad = (~torch.isfinite(b)) & torch.isfinite(a)
-            if bool(bad.any()): return float("inf")
+            if bool(bad.any()): return {"abs": float("inf"), "rel": float("inf"), "scale": None}
             ok = torch.isfinite(a) & torch.isfinite(b)
-            return float((a - b).abs()[ok].max()) if bool(ok.any()) else None
+            if not bool(ok.any()): return None
+            # RELATIVE: a shifted regime puts both sides at ~1e8, where an absolute
+            # threshold means nothing.  The obligation's own claim is relative too.
+            d = float((a - b).abs()[ok].max()); sc = float(a.abs()[ok].max())
+            return {"abs": d, "rel": d / max(sc, 1e-30), "scale": sc}
         except Exception:
             return None
 
@@ -288,13 +341,29 @@ def judge(cand, timeout=150, tol_trials=5):
         if not gate or obligation != "value":
             rec["verdict"] = "FAIL"; rec["reason"] = reason
             if gate and obligation == "accuracy":
-                worst = accuracy_gpu((rec.get("accuracy") or {}).get("regime"))
-                rec["gpu_maxdiff"] = worst
-                rec["reason"] = reason + (
-                    "; GPU reproduces it: the kernel is non-finite there and the reference is not"
-                    if worst == float("inf") else
-                    f"; GPU shows {worst:.4g} at that regime" if worst and worst > 1e-4 else
-                    "; hardware is silent even at that regime")
+                # This obligation IS gated, unlike the other three.  The module
+                # docstring's "hardware is structurally silent" is true of
+                # precision, precondition and memory and false of this one: the
+                # cancellation fires at a shifted regime, and at that regime the
+                # GPU shows it.  So an accuracy FAIL that hardware will not
+                # reproduce AT THE REGIME THAT FIRED is our modelling gap, and is
+                # reported as UNKNOWN rather than charged to the kernel.
+                g2 = accuracy_gpu((rec.get("accuracy") or {}).get("regime"))
+                rec["gpu_accuracy"] = g2
+                rec["gpu_maxdiff"] = g2 and g2["abs"]
+                if g2 is None:
+                    rec["verdict"] = "UNKNOWN"
+                    rec["reason"] = reason + ("; the hardware check at that regime could not run, "
+                                              "so this is not corroborated")
+                elif g2["rel"] <= ACC_GATE_REL:
+                    rec["verdict"] = "UNKNOWN"
+                    rec["reason"] = (f"unreproducible at the regime it fired in (GPU relative "
+                                     f"{g2['rel']:.2g}) -- our modelling gap, not a defect")
+                else:
+                    rec["reason"] = reason + (
+                        "; GPU reproduces it: the kernel is non-finite there and the reference is not"
+                        if g2["rel"] == float("inf") else
+                        f"; GPU reproduces at relative {g2['rel']:.3g} in that regime")
             elif gate:
                 worst, _ = gpu_confirm(cand, gate["mk"], probe=probe)
                 rec["gpu_maxdiff"] = worst
@@ -348,12 +417,33 @@ def judge(cand, timeout=150, tol_trials=5):
         rec["launches"] = sum(1 for c in calls if c[0] != "extern")
         rec["externs"] = sum(1 for c in calls if c[0] == "extern")
 
+        # Which buffers the kernel drew at random.  Found here, before anything
+        # else looks at determinism, because a kernel that draws IS expected to
+        # differ run to run -- giving up on it there is giving up on the only
+        # question worth asking, which is whether it computes the right function
+        # OF that draw.
+        rng_bufs, rng_hidden = [], []
+        for nm, aa, kk, oo in tr.events:
+            base = nm.split(".")[0]
+            if base in CONSUMES_RNG: rng_hidden.append(base); continue
+            if base not in DRAW_OPS: continue
+            for t2 in ([oo] if torch.is_tensor(oo) else (list(oo) if isinstance(oo, (tuple, list)) else [])):
+                if torch.is_tensor(t2) and t2.is_floating_point(): rng_bufs.append(t2)
+        rec["rng_draws"] = len(rng_bufs)
+        if rng_hidden:
+            # the draw is inside the op and never materialises as a tensor we can
+            # name, so there is nothing to bind the reference's draw to
+            rec["verdict"] = "NONDETERMINISTIC"; rec["obligation"] = "coverage"
+            rec["reason"] = (f"`{rng_hidden[0]}` consumes randomness that never appears as a "
+                             "tensor of its own, so the two sides' draws cannot be matched")
+            return rec
+
         # determinism: a second run must agree bit for bit, or nothing below means
         # anything.  This used to be recorded and never acted on -- a kernel whose
         # two runs differed still flowed through every obligation and could PASS.
         with torch.no_grad(): out2 = first(cand.run(inputs))
         rec["det"] = bool(torch.allclose(out.float(), out2.float(), rtol=0, atol=0, equal_nan=True))
-        if not rec["det"]:
+        if not rec["det"] and not rng_bufs:
             # ... unless the REFERENCE is nondeterministic too, in which case the
             # task itself is, and there is nothing to refine either way
             with torch.no_grad():
@@ -371,15 +461,22 @@ def judge(cand, timeout=150, tol_trials=5):
             ((torch.rand(x.shape, generator=g) * (2 if dist == "signed" else 1) - (1 if dist == "signed" else 0)).cuda()
              if torch.is_tensor(x) else x) for x in inputs]
         with torch.no_grad():
-            rec["tol"], rec["maxdiff"], terr = tolerance(lambda xs: model(*xs), cand.run, mk,
-                                                         trials=tol_trials, probe=probe)
-            rec["d4"], _, _ = tolerance(lambda xs: model(*xs), cand.run, mk,
-                                        trials=tol_trials, flip=True, probe=probe)
+            rec["tol"], rec["maxdiff"], terr = (None, None, "both sides draw randomness") \
+                if rng_bufs else tolerance(lambda xs: model(*xs), cand.run, mk,
+                                           trials=tol_trials, probe=probe)
+            rec["d4"], _, _ = (None, None, None) if rng_bufs else tolerance(
+                lambda xs: model(*xs), cand.run, mk, trials=tol_trials, flip=True, probe=probe)
             if terr: rec["tol_error"] = terr
 
         if not any(c[0] != "extern" for c in calls): rec["verdict"] = "NO-KERNEL"; return rec
 
+        # A random draw is not a reason to give up: it is an INPUT nobody named.
+        # The kernel's k-th draw becomes role `rng<k>`, and the reference's k-th
+        # draw is bound to the same symbol below, which turns "these disagree
+        # because both are random" into the question actually worth asking --
+        # given the same draw, do they compute the same thing?
         roles = {base_of(x): f"in{j}" for j, x in enumerate(inputs) if torch.is_tensor(x)}
+        for k, t2 in enumerate(rng_bufs): roles.setdefault(base_of(t2), f"rng{k}")
         roles.update({base_of(p): "p_" + n for n, p in cand.params.named_parameters()})
         roles.update({base_of(b): "b_" + n for n, b in cand.params.named_buffers()})
         # an in-place kernel returns one of its inputs: do not rename that storage,
@@ -392,6 +489,13 @@ def judge(cand, timeout=150, tol_trials=5):
         rec["kernels"] = [L.fn.__name__ if isinstance(L, Launch) else "extern:" + L.name for L in evs]
         t0 = time.time(); grid, it = symbolic_run(evs); rec["t_exec"] = round(time.time() - t0, 2)
         rec["mem_errors"] = len(grid.errors)
+        # Assumptions the interpreter had to make for the terms to mean anything.
+        # A scatter to a data-dependent address is well defined only if the indices
+        # are injective, which is a property of the input data and so cannot be
+        # proved here.  Recording it in the verdict is the whole point: a PASS that
+        # rests on an unstated assumption is not a PASS.
+        if grid.assumptions:
+            rec["assumptions"] = [{"kind": k, "buf": b, "why": w} for k, b, w in grid.assumptions]
 
         # --- obligation: memory ------------------------------------------------
         # Every kind the interpreter records, not just races.  `check.py` fails a
@@ -423,7 +527,7 @@ def judge(cand, timeout=150, tol_trials=5):
             if t is None or t.uid in seen: return
             seen.add(t.uid)
             if (isinstance(t, T.Sym) and t.buf != out_role and not DEL.is_delegated(t.buf)
-                    and not (t.buf.startswith(("in", "p_", "b_")) or t.buf == "ln2")):
+                    and not (t.buf.startswith(("in", "p_", "b_", "rng")) or t.buf == "ln2")):
                 unwritten.add(t.buf)
             for a in getattr(t, "args", ()): scan(a)
         for t in kterms: scan(t)
@@ -500,10 +604,27 @@ def judge(cand, timeout=150, tol_trials=5):
                for j, x in enumerate(inputs)]
         _rng = {n: getattr(torch, n) for n in
                 ("randn", "rand", "randint", "normal", "bernoulli", "randperm", "randn_like", "rand_like")}
-        def norng(nm): return lambda *a, **k: (_ for _ in ()).throw(NotImplementedError(f"{nm} (nondeterministic)"))
+        drawn = []                       # shapes the reference asked for, in order
+
+        def lifted(nm):
+            """The reference's k-th draw is the kernel's k-th draw."""
+            def go(*a, **k):
+                shape = tuple(a[0]) if a and isinstance(a[0], (tuple, list)) else \
+                        tuple(getattr(a[0], "shape", ())) if a and hasattr(a[0], "shape") else \
+                        tuple(x for x in a if isinstance(x, int))
+                idx = len(drawn); drawn.append(shape)
+                if idx >= len(rng_bufs):
+                    raise NotImplementedError(f"{nm}: the reference draws more randomness "
+                                              f"than the kernel does ({idx + 1} vs {len(rng_bufs)})")
+                want = tuple(rng_bufs[idx].shape)
+                if shape and tuple(shape) != want:
+                    raise NotImplementedError(f"{nm}: draw {idx} is {tuple(shape)} in the reference "
+                                              f"and {want} in the kernel")
+                return STensor.input(f"rng{idx}", want)
+            return go
         SPEC.USED.clear()
         try:
-            for n in _rng: setattr(torch, n, norng(n))
+            for n in _rng: setattr(torch, n, lifted(n))
             spec = first(sm(*sin))
         except NotImplementedError as e:
             rec["verdict"] = "SPEC-UNSUPPORTED"
@@ -514,6 +635,19 @@ def judge(cand, timeout=150, tol_trials=5):
         finally:
             for n, f in _rng.items(): setattr(torch, n, f)
         rec["t_spec"] = round(time.time() - t0, 2)
+        if rng_bufs and drawn:
+            # Nothing outside the two programs can confirm that their k-th draws
+            # are the same draw; matching by order and shape is the best available
+            # and it is an assumption, so it is stated rather than assumed away.
+            rec.setdefault("assumptions", []).append(
+                {"kind": "rng-correspondence", "buf": f"rng0..{len(drawn)-1}",
+                 "why": f"the reference and the kernel each draw {len(drawn)} random "
+                        f"tensor(s); they are matched in order and by shape"})
+        elif rng_bufs and not drawn:
+            rec["verdict"] = "NONDETERMINISTIC"; rec["obligation"] = "coverage"
+            rec["reason"] = (f"the kernel draws {len(rng_bufs)} random tensor(s) and the "
+                             "reference draws none, so there is nothing to match them to")
+            return rec
         # How strong a claim a FAIL on this row can be.  A reference transcribed
         # from a published definition settles the question; one recovered by
         # reading torch's C++ only says the two disagree -- see spec.provenance.
@@ -690,6 +824,9 @@ def judge(cand, timeout=150, tol_trials=5):
             return fail("accuracy", f"numerically worse than the reference at {ad['regime']}: "
                                     f"relative error {ad['spec_rel_err']:.2g} -> {ad['kernel_rel_err']:.2g}")
         rec["verdict"] = "PASS"
+        if rec.get("assumptions"):
+            rec["verdict"] = "PASS-ASSUMING"
+            rec["reason"] = "; ".join(a["why"] for a in rec["assumptions"])[:200]
         return rec
     except Timeout: rec["verdict"] = "TIMEOUT"; return rec
     except TermBudget as e: rec["verdict"] = "TOO-LARGE"; rec["reason"] = str(e); return rec
@@ -705,6 +842,21 @@ def judge(cand, timeout=150, tol_trials=5):
         # is that every way out is a verdict -- taking the whole corpus run with it.
         if type(e).__name__ in ("CompilationError", "SyntaxError", "IndentationError"):
             rec["verdict"] = "KERNEL-BROKEN"; rec["reason"] = f"{type(e).__name__}: {str(e)[:70]}"; return rec
-        rec["verdict"] = "ERROR"; rec["reason"] = f"{type(e).__name__}: {str(e)[:80]}"; return rec
+        # Where it came from.  `AssertionError: ` with an empty message is otherwise
+        # unactionable, and three trace rows reported exactly that.
+        tb = traceback.extract_tb(e.__traceback__)
+        rec["verdict"] = "ERROR"; rec["reason"] = f"{type(e).__name__}: {str(e)[:80]}"
+        if tb: rec["error_at"] = f"{tb[-1].filename.rsplit('/', 1)[-1]}:{tb[-1].lineno} {tb[-1].name}"
+        # A failure raised INSIDE the generated module is the candidate's, whatever
+        # its type -- four trace rows raise a bare `AssertionError` from their own
+        # wrapper's shape check.  Charging those to the judge overstates our error
+        # rate and hides that the kernel simply does not run.
+        mod = (cand.ns or {}).get("__name__") if cand.ns else None
+        if mod and tb and tb[-1].filename.rsplit("/", 1)[-1].startswith(mod.split(".")[-1]):
+            rec["verdict"] = "KERNEL-BROKEN"
+            rec["reason"] = f"raised inside the generated module -- {rec['reason']}"
+        return rec
     finally:
         signal.alarm(0)
+        # set lazily, while probing, so it can only be read on the way out
+        if getattr(probe, "stale", None): rec["probe_stale"] = probe.stale

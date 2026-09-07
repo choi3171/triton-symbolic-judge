@@ -15,10 +15,16 @@ def _const_node(v):
     not 5902958103587057/2^79 -- which is what overflowed Volta's i128 coefficients."""
     import math, numpy as np
     from fractions import Fraction
-    if math.isfinite(v):
-        fr = Fraction(str(np.float32(v)))       # shortest decimal identifying the fp32 value
-        if abs(fr.numerator) < 2**62 and fr.denominator < 2**62:
-            return {"op": "rat", "num": fr.numerator, "den": fr.denominator}
+    if not math.isfinite(v):
+        # Volta's theory is the reals: no NaN, no infinity.  And `json.dumps`
+        # spells them as bare `NaN` / `Infinity`, which is not JSON, so the Rust
+        # side panicked with `bad input json` and the row was charged to the judge
+        # as ERROR.  A gather's out-of-range default IS such a constant, which
+        # makes this reachable from any indirect read.
+        raise Unsupported(f"non-finite constant ({v}) is outside Volta's theory")
+    fr = Fraction(str(np.float32(v)))           # shortest decimal identifying the fp32 value
+    if abs(fr.numerator) < 2**62 and fr.denominator < 2**62:
+        return {"op": "rat", "num": fr.numerator, "den": fr.denominator}
     return {"op": "const", "v": v}
 
 # An n-ary Add/Mul is flattened into a binary chain for the arena, so the node
@@ -81,8 +87,10 @@ def equivalent(pairs, budget=None):
     na, ra = serialize([a for a, _ in pairs])
     nb, rb = serialize([b for _, b in pairs])
     payload = {"nodes_a": na, "nodes_b": nb, "pairs": list(zip(ra, rb)), "budget": budget}
+    try: body = json.dumps(payload, allow_nan=False)
+    except ValueError as e: raise Unsupported(f"term does not serialise to JSON ({e})")
     env = dict(os.environ); env.setdefault("VOLTA_MEM_GB", "4")
-    p = subprocess.run([BIN], input=json.dumps(payload), capture_output=True, text=True, env=env)
+    p = subprocess.run([BIN], input=body, capture_output=True, text=True, env=env)
     if p.returncode != 0:
         tail = p.stderr[-400:]
         if "memory allocation" in tail or "Cannot allocate" in tail or p.returncode == -9:

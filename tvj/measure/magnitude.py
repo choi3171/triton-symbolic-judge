@@ -49,7 +49,7 @@ def first_break(i, rows, tag):
         try:
             with torch.no_grad():
                 a = TR.first(m(*xs)).float()
-                b = TR.first(e(*TR.bind_wrapper(e, m, xs))).float()
+                b = TR.first(TR.call_wrapper(e, m, xs)).float()
         except Exception:
             return None
         # the reference is the authority: if IT is not finite, the input is out of

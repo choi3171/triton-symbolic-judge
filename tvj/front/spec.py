@@ -255,6 +255,13 @@ class STensor:
     def __le__(self, o): return self._cmp("le", o)
     def __gt__(self, o): return self._cmp("gt", o)
     def __ge__(self, o): return self._cmp("ge", o)
+    # `==` is the ONE comparison that used to fall through to object identity: it
+    # returned Python `False`, so `attn.masked_fill(mask == 0, -1e9)` built
+    # `select(0.0, -1e9, attn)` -- a reference with the mask silently deleted.
+    # Every other missing dunder (`~`, `&`, `//`, `abs`, `float`) raises TypeError
+    # and is reported as SPEC-ERROR; this one was the only quiet one.
+    def __eq__(self, o): return self._cmp("eq", o)
+    __hash__ = object.__hash__          # __eq__ would otherwise make STensor unhashable
     def __ne__(self, o): return self._cmp("ne", o)
     def eq(self, o): return self._cmp("eq", o)
     def ne(self, o): return self._cmp("ne", o)
@@ -505,6 +512,26 @@ def take(x, index, axis=0):
             view[(k,) + pos] = T.gather([src[(m,) + pos] for m in range(n)], j)
     return STensor(np.moveaxis(out.reshape(ix.a.shape + rest), 0, axis)
                    if ix.a.ndim == 1 and axis else out)
+
+
+def scatter_put(base, dim, index, source):
+    """`base.scatter_(dim, index, src)` -- the reference side of a plain scatter.
+
+    Written with the same nesting the interpreter uses, and carrying the same
+    caveat: torch documents the result as nondeterministic when two indices
+    collide, so this is well defined exactly where the kernel's version is."""
+    b = _st(base); ix = _st(index); src = _st(source)
+    if dim < 0: dim += b.ndim
+    if b.ndim != 1 or ix.a.ndim != 1 or src.a.ndim != 1 or dim != 0:
+        raise NotImplementedError("spec front-end: unsupported torch op scatter_ (only 1-D dim 0)")
+    idxs = list(ix.a.reshape(-1)); vals = list(src.a.reshape(-1))
+    out = np.empty(b.a.shape, dtype=object)
+    for j in range(b.a.shape[0]):
+        acc = T.lift(b.a[j])
+        for k, v in reversed(list(zip(idxs, vals))):
+            acc = T.select(T.cmp("eq", T.lift(k), T.const(float(j))), T.lift(v), acc)
+        out[j] = acc
+    return STensor(out)
 
 
 def scatter_add(base, dim, index, source, alpha=1):
@@ -845,6 +872,14 @@ _TORCH = {
     "index_add": lambda x, dim, index, source, alpha=1: scatter_add(x, dim, index, source, alpha),
     "index_add_": lambda x, dim, index, source, alpha=1: scatter_add(x, dim, index, source, alpha),
     "scatter_add": lambda x, dim, index, src: scatter_add(x, dim, index, src),
+    "scatter": lambda x, dim, index, src, reduce=None:
+        scatter_put(x, dim, index, src) if reduce is None
+        else _unsupported(f"scatter(reduce={reduce})")(),
+    "scatter_": lambda x, dim, index, src, reduce=None:
+        scatter_put(x, dim, index, src) if reduce is None
+        else _unsupported(f"scatter_(reduce={reduce})")(),
+    "index_copy": lambda x, dim, index, source: scatter_put(x, dim, index, source),
+    "index_copy_": lambda x, dim, index, source: scatter_put(x, dim, index, source),
     "scatter_add_": lambda x, dim, index, src: scatter_add(x, dim, index, src),
     "index_select": lambda x, dim, index, out=None: take(x, index, dim),
     "take": lambda x, index: take(_st(x).reshape(-1), index, 0),

@@ -1,67 +1,71 @@
-== KernelBook (Inductor-generated) ==   400 rows
+== KernelBook (Inductor-generated) ==   399 rows
 
 verdict              count   share
-  PASS                 271    67.8%
+  PASS                 272    68.2%
+  SPEC-ERROR            29     7.3%
   FAIL                  28     7.0%
-  SPEC-ERROR            27     6.8%
-  SPEC-UNSUPPORTED      22     5.5%
-  KERNEL-UNSUPPORTED    19     4.8%
-  UNKNOWN               16     4.0%
-  TIMEOUT                6     1.5%
-  NONDETERMINISTIC       5     1.2%
-  ERROR                  3     0.8%
+  SPEC-UNSUPPORTED      21     5.3%
+  KERNEL-UNSUPPORTED    18     4.5%
+  UNKNOWN               17     4.3%
+  PASS-ASSUMING          4     1.0%
+  TIMEOUT                4     1.0%
   TOO-LARGE              3     0.8%
+  NONDETERMINISTIC       2     0.5%
+  ERROR                  1     0.3%
 
-judged (PASS/FAIL): 299  (74.8%)   UNKNOWN: 16   unsupported: 41   error/timeout: 36
+judged (PASS/FAIL): 304  (76.2%)   UNKNOWN: 17   unsupported: 39   error/timeout: 34
 
 tolerance test  x  judge   (judged rows only)
-  tol=True   judge=PASS    271
-  tol=False  judge=FAIL     23
-  tol=True   judge=FAIL      5
-  the interesting cell: tolerance PASSES and the judge rejects -> 5
+  tol=True   judge=PASS    272
+  tol=False  judge=FAIL     24
+  tol=None   judge=PASS-ASSUMING     4
+  tol=True   judge=FAIL      4
+  the interesting cell: tolerance PASSES and the judge rejects -> 4
 
 why a row could not be judged (top 15)
      8  SPEC-ERROR         TypeError: Input type is not a torch.Tensor. Got <class 
      6  KERNEL-UNSUPPORTED float->int conversion of a symbolic value
      6  UNKNOWN            error: Budget { limit: 200000000 }
-     6  TIMEOUT            
+     5  KERNEL-UNSUPPORTED comparison on an integer loaded from memory
      4  UNKNOWN            1 unprovable but numerically equal
-     4  KERNEL-UNSUPPORTED extern transposed convolution
-     4  KERNEL-UNSUPPORTED comparison on an integer loaded from memory
+     4  SPEC-ERROR         ValueError: operands could not be broadcast together wit
+     4  TIMEOUT            
      4  SPEC-ERROR         AttributeError: 'STensor' object has no attribute 'is_ne
-     3  NONDETERMINISTIC   the output depends on randomness (randn.default); it is 
-     3  SPEC-ERROR         ValueError: operands could not be broadcast together wit
      3  SPEC-UNSUPPORTED   einsum
+     3  KERNEL-UNSUPPORTED extern transposed convolution
      2  UNKNOWN            Volta exceeded its 4 GB cap on this pair
      2  SPEC-UNSUPPORTED   unfold
      2  KERNEL-UNSUPPORTED data-dependent integer arithmetic (integer loaded from m
      2  SPEC-UNSUPPORTED   prelu
+     2  SPEC-ERROR         shape () vs out (4, 4, 4, 4)
 
 obligations
   FAIL by obligation:   {'value': 28}
+  decided only under an assumption: 4 rows   {'rng-correspondence': 4}
   FAIL by reference grade: {'definition': 25, 'inferred-from-impl': 3}   (inferred-from-impl means torch's C++ is the authority, not a definition)
-  value decided by:     {'AC': 256, 'Volta': 14, 'Volta+Z3': 1}
-  reached the Z3 case split: 25 rows
-  precision tags:       {'exact': 270, None: 28, 'tf32/f16': 1}
-  precondition worse than the reference: 0 / 271 checked
+  value decided by:     {'AC': 257, 'Volta': 14, 'Volta+Z3': 1}
+  reached the Z3 case split: 26 rows
+  precision tags:       {'exact': 275, None: 28, 'tf32/f16': 1}
+  precondition worse than the reference: 0 / 276 checked
   accuracy: 0 rejected, 0 noted below the materiality floor
-  memory errors recorded: 0 rows
-  trusted extern calls:  224 rows, 674 calls
+  memory errors recorded: 0 rows   {}
+  accuracy obligation SKIPPED (not passed): 0 rows
+  trusted extern calls:  223 rows, 668 calls
   torch tail replayed:   0 rows
-  non-deterministic:     8 rows
+  non-deterministic:     7 rows
   degenerate parameters (the corpus' own tolerance test is vacuous): 10 rows
 
 where the time goes (seconds, per row)
-  kernel -> terms  total     534   median   0.03   p90    1.3   max    74.2   (n=341)
-  module -> terms  total     173   median   0.02   p90    1.3   max    61.6   (n=203)
-  Volta            total     131   median   0.01   p90    6.7   max    75.9   (n=58)
-  preconditions    total     238   median   0.04   p90    2.0   max    52.0   (n=229)
-  accuracy         total      15   median   0.04   p90    0.9   max     2.0   (n=64)
+  kernel -> terms  total     547   median   0.17   p90    1.4   max    64.4   (n=372)
+  module -> terms  total     158   median   0.02   p90    1.3   max    45.4   (n=229)
+  Volta            total     202   median   0.01   p90    7.6   max   146.7   (n=56)
+  preconditions    total     267   median   0.05   p90    2.5   max    74.4   (n=237)
+  accuracy         total      22   median   0.05   p90    0.8   max     3.0   (n=92)
 
 FAIL rows (28)
   [  9] GCN                        value        tol=False GPU=3.64      16 outputs differ; witness spec=0.950756 kernel=0.681205; GPU reproduces
   [ 15] GatAttention               value        tol=False GPU=2.76      64 outputs differ; witness spec=0.0389808 kernel=-0.0973412; GPU reprodu
-  [ 17] GatSymAttention            value        tol=True  GPU=1.23      57 outputs differ; witness spec=-0.363893 kernel=-0.042218; GPU reproduc
+  [ 17] GatSymAttention            value        tol=False GPU=1.23      57 outputs differ; witness spec=-0.363893 kernel=-0.042218; GPU reproduc
   [ 20] ScalarBiasScale            value        tol=False GPU=0.0955    256 outputs differ; witness spec=0.543858 kernel=0.477991; GPU reproduce
   [ 27] MaskedMSELoss              value        tol=False GPU=140       1 outputs differ; witness spec=-8.11927 kernel=131.744; GPU reproduces a
   [ 33] SparseDownSampleClose      value        tol=False GPU=1.92      256 outputs differ; witness spec=0.49827 kernel=-0.985631; GPU reproduce
@@ -88,74 +92,79 @@ FAIL rows (28)
   [357] ContrastiveDistanceLoss    value        tol=False GPU=2.09      1 outputs differ; witness spec=11.7338 kernel=13.8197; GPU reproduces at
   [377] BiencoderLoss              value        tol=False GPU=0.0102    1 outputs differ; witness spec=1.42667 kernel=1.43689; GPU reproduces at
 
-== LLM-generated Triton ==   125 rows
+== LLM-generated Triton ==   156 rows
 
 verdict              count   share
-  PASS                  75    60.0%
-  UNKNOWN               22    17.6%
-  KERNEL-BROKEN          7     5.6%
-  FAIL                   6     4.8%
-  KERNEL-UNSUPPORTED     6     4.8%
-  SPEC-ERROR             3     2.4%
-  NONDETERMINISTIC       2     1.6%
-  NO-ENTRY               2     1.6%
-  ADAPTER                1     0.8%
-  SPEC-UNSUPPORTED       1     0.8%
+  PASS                  89    57.1%
+  UNKNOWN               31    19.9%
+  KERNEL-BROKEN         13     8.3%
+  FAIL                   9     5.8%
+  KERNEL-UNSUPPORTED     3     1.9%
+  SPEC-ERROR             3     1.9%
+  SPEC-UNSUPPORTED       2     1.3%
+  NONDETERMINISTIC       2     1.3%
+  NO-ENTRY               2     1.3%
+  ADAPTER                1     0.6%
+  ERROR                  1     0.6%
 
-judged (PASS/FAIL): 81  (64.8%)   UNKNOWN: 22   unsupported: 7   error/timeout: 3
+judged (PASS/FAIL): 98  (62.8%)   UNKNOWN: 31   unsupported: 5   error/timeout: 4
 
 corpus label  x  judge
-  label=True   judge=PASS     74
-  label=True   judge=FAIL      6
-  label=False  judge=PASS      1
+  label=True   judge=PASS     89
+  label=True   judge=FAIL      9
 
 tolerance test  x  judge   (judged rows only)
-  tol=True   judge=PASS     75
-  tol=True   judge=FAIL      6
-  the interesting cell: tolerance PASSES and the judge rejects -> 6
+  tol=True   judge=PASS     89
+  tol=True   judge=FAIL      8
+  tol=False  judge=FAIL      1
+  the interesting cell: tolerance PASSES and the judge rejects -> 8
 
 why a row could not be judged (top 15)
-    12  UNKNOWN            output produced by torch after the kernels (1 elements w
-     6  KERNEL-UNSUPPORTED branch to an unknown block `bb2`
-     2  UNKNOWN            Volta exceeded its 4 GB cap on this pair
+    13  UNKNOWN            output produced by torch after the kernels (1 elements w
+     3  UNKNOWN            Volta exceeded its 4 GB cap on this pair
+     3  KERNEL-BROKEN      raised inside the generated module -- AssertionError: 
+     2  UNKNOWN            error: Budget { limit: 200000000 }
      2  UNKNOWN            1 unprovable but numerically equal
-     2  NONDETERMINISTIC   the output depends on randomness (randn); it is not a fu
      2  NO-ENTRY           
      1  ADAPTER            cannot bind wrapper parameter `weight1`
      1  UNKNOWN            256 unprovable but numerically equal
-     1  UNKNOWN            error: Budget { limit: 200000000 }
+     1  KERNEL-UNSUPPORTED scf.while
      1  UNKNOWN            unreproducible on hardware (GPU max diff 1.5e-08) -- our
+     1  UNKNOWN            non-finite constant (-inf) is outside Volta's theory
      1  UNKNOWN            output produced by torch after the kernels (64 elements 
      1  SPEC-ERROR         IndexError: only integers, slices (`:`), ellipsis (`...`
-     1  UNKNOWN            144 unprovable but numerically equal
-     1  SPEC-UNSUPPORTED   kl_div
-     1  SPEC-ERROR         TypeError: Input type is not a torch.Tensor. Got <class 
+     1  UNKNOWN            unreproducible on hardware (GPU max diff 0) -- our model
+     1  UNKNOWN            64 unprovable but numerically equal
 
 obligations
-  FAIL by obligation:   {'accuracy': 3, 'value': 3}
-  FAIL by reference grade: {'definition': 5, 'inferred-from-impl': 1}   (inferred-from-impl means torch's C++ is the authority, not a definition)
-  value decided by:     {'AC': 72, 'Volta': 1, 'Volta+Z3': 2}
-  reached the Z3 case split: 7 rows
-  precision tags:       {'exact': 78, None: 3}
-  precondition worse than the reference: 0 / 78 checked
+  FAIL by obligation:   {'accuracy': 3, 'value': 6}
+  FAIL by reference grade: {'definition': 8, 'inferred-from-impl': 1}   (inferred-from-impl means torch's C++ is the authority, not a definition)
+  value decided by:     {'AC': 84, 'Volta': 2, 'Volta+Z3': 3}
+  reached the Z3 case split: 12 rows
+  precision tags:       {'exact': 92, None: 6}
+  precondition worse than the reference: 0 / 92 checked
   accuracy: 3 rejected, 0 noted below the materiality floor
-  memory errors recorded: 0 rows
+  memory errors recorded: 0 rows   {}
+  accuracy obligation SKIPPED (not passed): 0 rows
   trusted extern calls:  0 rows, 0 calls
-  torch tail replayed:   23 rows
+  torch tail replayed:   27 rows
   non-deterministic:     1 rows
 
 where the time goes (seconds, per row)
-  kernel -> terms  total     106   median   0.05   p90    0.8   max    66.5   (n=107)
-  module -> terms  total       0   median   0.01   p90    0.0   max     0.2   (n=27)
-  Volta            total      33   median   0.00   p90    0.0   max    33.3   (n=15)
-  preconditions    total       2   median   0.02   p90    0.1   max     0.1   (n=56)
-  accuracy         total       0   median   0.01   p90    0.0   max     0.0   (n=6)
+  kernel -> terms  total     140   median   0.04   p90    0.9   max    94.1   (n=134)
+  module -> terms  total      28   median   0.01   p90    0.0   max    16.4   (n=45)
+  Volta            total      54   median   0.00   p90    0.0   max    46.4   (n=24)
+  preconditions    total       3   median   0.02   p90    0.1   max     1.1   (n=66)
+  accuracy         total       0   median   0.01   p90    0.0   max     0.0   (n=8)
 
-FAIL rows (6)
+FAIL rows (9)
   [ 23] Tanh                       accuracy     tol=True  GPU=inf       numerically worse than the reference at shift 1e2: relative error 0 -> i
+  [ 35] NormalizationLayer         value        tol=False GPU=1.23      256 outputs differ; witness spec=-0.140412 kernel=0.536457; GPU reproduc
   [ 42] BiasLayer                  value        tol=True  GPU=0.775     256 outputs differ; witness spec=1.40719 kernel=0.688844; GPU reproduces
   [ 53] MaxPoolPad                 value        tol=True  GPU=0.0874    1 outputs differ; witness spec=-0.0873757 kernel=0; GPU reproduces at 0.
   [ 66] ChannelRate                value        tol=True  GPU=4.2       256 outputs differ; witness spec=0.958923 kernel=0.688844; GPU reproduce
+  [ 97] Theta                      value        tol=True  GPU=3.27      256 outputs differ; witness spec=-0.540616 kernel=0.688844; GPU reproduc
+  [ 98] TLU                        value        tol=True  GPU=0.775     255 outputs differ; witness spec=0.718351 kernel=0.688844; GPU reproduce
   [114] GatedTanhUnit              accuracy     tol=True  GPU=inf       numerically worse than the reference at shift 1e2: relative error 0 -> i
   [123] Tanh                       accuracy     tol=True  GPU=inf       numerically worse than the reference at shift 1e2: relative error 0 -> i
 

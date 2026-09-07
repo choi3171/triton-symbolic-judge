@@ -79,18 +79,29 @@ def bind_wrapper(entry, model, inputs):
                 if k.split(".")[-1] == name: return v
         if hasattr(model, name): return getattr(model, name)
         return None
-    args, it = [], iter(inputs)
+    args, kwargs, it = [], {}, iter(inputs)
     for pname, p in sig.parameters.items():
         if p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD): continue
         v = lookup(pname)
-        if v is not None:
-            args.append(v); continue
-        try:
-            args.append(next(it)); continue
-        except StopIteration: pass
-        if p.default is not inspect.Parameter.empty: args.append(p.default); continue
-        raise TypeError(f"cannot bind wrapper parameter `{pname}`")
-    return args
+        if v is None:
+            try: v = next(it)
+            except StopIteration:
+                if p.default is inspect.Parameter.empty:
+                    raise TypeError(f"cannot bind wrapper parameter `{pname}`")
+                v = p.default
+        # A parameter after `*` is KEYWORD-ONLY.  Passing those positionally is
+        # what `takes 2 positional arguments but 5 were given` was: three trace
+        # rows died on it and were charged to the judge as ERROR.
+        if p.kind is p.KEYWORD_ONLY: kwargs[pname] = v
+        else: args.append(v)
+    return args, kwargs
+
+
+def call_wrapper(entry, model, inputs):
+    """Bind and call.  Every caller used to spell this `entry(*bind_wrapper(...))`,
+    which is why the keyword-only bug had four places to hide."""
+    args, kwargs = bind_wrapper(entry, model, inputs)
+    return entry(*args, **kwargs)
 
 
 CORPORA = {
@@ -134,7 +145,7 @@ def build(r):
     # the wrapper reads the reference module's own parameter tensors, so there is
     # nothing to push after the judge randomises them: sync stays None
     return Candidate(name=cname, model=model, inputs=inputs, ns=ns2,
-                     run=lambda xs: entry(*bind_wrapper(entry, model, list(xs))),
+                     run=lambda xs: call_wrapper(entry, model, list(xs)),
                      meta=rec), None
 
 

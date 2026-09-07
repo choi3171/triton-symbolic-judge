@@ -55,7 +55,7 @@ def run_under(i, vary_params=False, shift=0.0, poison=False, trials=5):
         try:
             with torch.no_grad():
                 a = TR.first(m(*xs)).float()
-                b = TR.first(e(*TR.bind_wrapper(e, m, xs))).float()
+                b = TR.first(TR.call_wrapper(e, m, xs)).float()
             if bool(((~torch.isfinite(b)) & torch.isfinite(a)).any()): return False
             ok = torch.isfinite(a) & torch.isfinite(b)
             if not bool(ok.any()): continue

@@ -52,8 +52,8 @@ claim("tf32.py", "input_precision=tf32 is a permission: ignored on sm_75, bitwis
       tag="sm_75")
 claim("difftest_mm.py", "whole-kernel: semantics and GPU are equally far from float64",
       [r"max \|semantics - float64\|\s+3\.545e-06", r"max \|gpu\s+- float64\|\s+3\.545e-06"], tag="sm_75")
-claim("semantics.py", "21 decisions, none open",
-      [r"21 semantic decisions over 26 core ops", r"\[open\]\s+0", r"\[measured\]\s+5"])
+claim("semantics.py", "22 decisions, none open",
+      [r"22 semantic decisions over 26 core ops", r"\[open\]\s+0", r"\[measured\]\s+5"])
 
 # --- Volta decision procedure ------------------------------------------------
 claim("volta_check.py", "Volta bridge: 7/7 identities; softmax naive==safe 16/16 and 128/128",
@@ -121,8 +121,8 @@ claim("reward_hack_lit.py", "unstable variance: equal over the reals (value=pass
 # dead threshold) are why these two run on every verification.
 claim("spec_sigcheck.py", "every spec handler agrees with torch: no swallowed, mis-positioned, or declared-and-unread argument",
       [r"0 disagreement\(s\): 0 silent \(0 mis-positioned, 0 swallowed, 0 dead\)"])
-claim("spec_agree.py", "the spec front-end computes what torch computes: 110 cases including the full pooling flag sweep and every indirect-read spelling, plus 3 modes it must refuse",
-      [r"110/110 handlers agree with torch", r"gather\(dim=1\).*ok", r"index_select\(dim=0\).*ok", r"3/3 refusals as expected", r"avg_pool2d k3 s2 p1 ceil=True cip=False.*ok",
+claim("spec_agree.py", "the spec front-end computes what torch computes: 113 cases including the full pooling flag sweep, every indirect-read spelling and `==` as a mask, plus 3 modes it must refuse",
+      [r"113/113 handlers agree with torch", r"masked_fill\(m == 0\).*ok", r"gather\(dim=1\).*ok", r"index_select\(dim=0\).*ok", r"3/3 refusals as expected", r"avg_pool2d k3 s2 p1 ceil=True cip=False.*ok",
        r"var\(dim, unbiased=False\).*ok", r"adaptive_avg_pool2d -> 3.*ok"])
 
 claim("delegate_test.py", "delegated library ops: the two spellings share a symbol, nothing else does, small operands are untouched, and a pair the shortcut cannot settle is expanded rather than reported",
@@ -154,11 +154,30 @@ claim("testgen_validate.py", "an axis generalises where a point does not: two di
 # is the standing check for that class: properties over randomly generated terms,
 # swept across ten seeds because the first version of it passed on its own fixed
 # seed and failed on nine of the next ten.
+# Four shapes that are everywhere in production kernels and appear in neither
+# corpus.  Refusing them was never measured against actually trying, so this runs
+# each one end to end and reports which of the three answers comes back.
+claim("indirection.py", "the four indirect-access shapes: a gather and a scatter-add are decided outright, a scatter only under a recorded assumption, and a branch on loaded data is refused",
+      [r"reference `x\[idx\]` vs the kernel, 8 outputs\n   AC normal form:      8/8",
+       r"index_add_\(0, idx, src\)` vs the kernel, 8 outputs\n   AC normal form:      8/8",
+       r"scatter_\(0, idx, src\)` vs the kernel, 8 outputs\n   AC normal form:      8/8",
+       r"assumption recorded: index-distinct on `out_ptr`",
+       r"early_exit  branch on loaded\s+REFUSED",
+       r"an off-by-one gather: 0/8 identical"])
 claim("metamorphic.py", "term-algebra properties over 10 seeds x 4000 random terms: a constructor returns what it was asked for, and a term computes what its construction meant",
       [r"10 seeds x 4000 terms: all properties hold"])
 claim("accuracy_test.py", "the accuracy obligation fires on cancellation and stays silent on mere reassociation",
       [r"unstable variance\s+worse\s+worse", r"stable variance \(reverse\)\s+pass\s+pass",
        r"3\*sum vs sum of 3\*x\s+pass\s+pass", r"5/5 accuracy verdicts as expected"])
+
+claim("acc_gate.py", "[sm_75] accuracy is the ONE obligation that is hardware-gated: the cancellation is silent at the benchmark's inputs and loud at the regime it fired in, so a FAIL hardware will not reproduce THERE is downgraded to UNKNOWN",
+      [r"verdict\s+FAIL\s+\(accuracy\)", r"ok: hardware reproduces at relative \S+ > gate",
+       r"with the gate raised above what hardware showed", r"verdict\s+UNKNOWN\s+ok",
+       r"accuracy gate holds in both directions"])
+
+claim("branch_test.py", "block arguments are bound across a `cf` branch: `^bb1(%5: f32)` declares %5 and no op assigns it, so an unbound argument used to kill the row with a KeyError and report it as ERROR",
+      [r"8/8 carried values correct, 1/1 refusal",
+       r"refused: branch passes 0 argument\(s\) to `\^bb3`, which declares 1"])
 
 # --- precondition layer ------------------------------------------------------
 claim("precond2.py", "float-validity preconditions: naive softmax |x|<=86.64, safe softmax unbounded; naive attention overflows at |q|,|k|<=10",
@@ -183,7 +202,13 @@ for _root, _dirs, _files in os.walk("tvj"):
 def run(script, args):
     t0 = time.time()
     target = ["-m", MODULE[script]] if script in MODULE else [script]
-    p = subprocess.run([sys.executable, "-u", *target, *args], capture_output=True, text=True, timeout=3600)
+    # Reproducing a claim must not write to the corpus record.  `kernelbook_run 0 40`
+    # appended 41 rows on every verify, so a full sweep and a claim run were mixed in
+    # one file and the later one won -- row 17 reported a different tolerance verdict
+    # depending on which had run last.
+    env = dict(os.environ, TVJ_NO_RECORD="1")
+    p = subprocess.run([sys.executable, "-u", *target, *args], capture_output=True,
+                       text=True, timeout=3600, env=env)
     out = p.stdout + p.stderr
     out = "\n".join(l for l in out.split("\n") if not re.search(r"warning:|note:|\^~|In file|^\s*\d+ \|", l))
     return out, time.time() - t0

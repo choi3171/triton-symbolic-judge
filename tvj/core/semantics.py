@@ -296,6 +296,29 @@ DECISIONS = [
         "atomic store rather than adding to it; check.py `mm_splitk` passes only "
         "because of it."),
 
+    Decision("scatter.order", "tt.store",
+        "Two lanes store to the same data-dependent address.  Which value survives?",
+        "The term is written as `first matching lane wins`, and the choice is "
+        "RECORDED as an assumption (`index-distinct`) rather than asserted.  A row "
+        "decided this way is reported as PASS-ASSUMING, never PASS.",
+        "documented",
+        "The hardware orders nothing here, so any nesting is a choice we are not "
+        "entitled to make silently.  It is correct exactly when at most one lane "
+        "matches -- a property of the index DATA, not of the kernel, so it cannot be "
+        "proved from the kernel and is stated instead.  This is the same shape as "
+        "the float-validity precondition: the real-number statement holds inside a "
+        "named region and says nothing outside it.  Note what the alternative would "
+        "cost: refusing the op outright, as this interpreter did until now, reports "
+        "nothing about a kernel shape that is everywhere in production code, while "
+        "emitting the term and swallowing the assumption would be a false PASS of "
+        "exactly the kind this project treats as unacceptable.  torch is in the same "
+        "position and resolves it the same way -- `scatter_` is documented as "
+        "nondeterministic when indices collide -- so a reference written with "
+        "`scatter_` carries the assumption too and the two sides cancel.",
+        "sexec.py Interp.scatter_store records into Grid.assumptions; judge.py "
+        "turns a row with any assumption into PASS-ASSUMING with the reason "
+        "attached; measure/indirection.py shows all four indirect shapes."),
+
 ]
 
 # Every `measured` entry carries an architecture tag in its evidence. sm_75 has no
