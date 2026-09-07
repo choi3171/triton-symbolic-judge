@@ -38,6 +38,22 @@ it makes reassociation free (split-K, flash attention, tree reductions are all
 equal), and it means the two things reals cannot see — representation error and
 precision contracts — need checks of their own.
 
+### First, is it a function of its inputs at all?
+
+Before any of the five, the kernel is run twice at the same inputs and the two
+answers must agree bit for bit. If they do not, nothing below means anything —
+and if the reference is *also* nondeterministic, the task itself is, and there is
+nothing to refine either way. Both outcomes are the verdict `NONDETERMINISTIC`
+rather than a FAIL, because neither is a claim about correctness.
+
+A kernel that draws randomness is not given up on, though. The draws are lifted
+to inputs: the kernel's k-th draw becomes a named buffer, the reference's k-th
+draw is bound to the same name, and the question becomes the one worth asking —
+*given the same draw, do the two compute the same thing?* That binding is an
+assumption, and it is recorded (below), not assumed away. Randomness that never
+materialises as a tensor of its own — `native_dropout` returns its mask, not its
+draw — cannot be bound to anything and is refused.
+
 ### Five checks, not one
 
 Each is a separate claim the kernel has to satisfy; a verdict names which one
@@ -85,10 +101,21 @@ is structurally silent for them: a stale buffer holds the right answer, tf32 is
 ignored on sm_75, a narrowed validity radius only shows at extreme inputs.
 Gating them would discard exactly the defects a test cannot reach.
 
-A sixth verdict, `PASS-ASSUMING`, carries a stated assumption the judge cannot
-discharge. A scatter to a data-dependent address is well defined exactly when the
-indices are distinct — a property of the input data, not of the kernel — so it is
-recorded rather than asserted.
+A separate verdict, `PASS-ASSUMING`, carries a stated assumption the judge cannot
+discharge. There are two kinds, and both are properties of the *input data*
+rather than of the kernel, which is why neither can be proved from the kernel and
+both are written into the verdict instead:
+
+- **`index-distinct`** — a scatter to a data-dependent address is well defined
+  exactly when the indices are pairwise distinct. torch is in the same position
+  and resolves it the same way: `scatter_` is documented as nondeterministic when
+  indices collide.
+- **`rng-correspondence`** — when both sides draw randomness, their k-th draws
+  are matched by order and by shape. Nothing outside the two programs can confirm
+  that those are the same draw.
+
+A PASS that rests on an unstated assumption is not a PASS, so the assumption
+travels with the verdict.
 
 ### The reference is the weak point
 
