@@ -28,3 +28,6 @@ data/triton_multiturn.json
 # superseded run records, kept locally for before/after comparisons only
 data/archive/
 results/archive/
+
+# local virtualenv for running the checks (see requirements.txt)
+.venv/

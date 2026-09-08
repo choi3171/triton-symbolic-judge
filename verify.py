@@ -8,6 +8,12 @@ is itself information, not a failure of the method.
 
     python3 verify.py          # fast set, ~3-4 min
     python3 verify.py --all    # + suite.py, scale to 128, attention L=64
+
+The run opens by reading the machine -- torch, Triton, CUDA and the compute
+capability -- because some of what is claimed here is a property of the device
+and the Triton version rather than of this code (tf32 being ignored, which
+element a reduction drops), and a log that does not say which machine produced it
+cannot be compared with another one.
 """
 import os, re, subprocess, sys, time
 
@@ -52,8 +58,8 @@ claim("tf32.py", "input_precision=tf32 is a permission: ignored on sm_75, bitwis
       tag="sm_75")
 claim("difftest_mm.py", "whole-kernel: semantics and GPU are equally far from float64",
       [r"max \|semantics - float64\|\s+3\.545e-06", r"max \|gpu\s+- float64\|\s+3\.545e-06"], tag="sm_75")
-claim("semantics.py", "22 decisions, none open",
-      [r"22 semantic decisions over 26 core ops", r"\[open\]\s+0", r"\[measured\]\s+5"])
+claim("semantics.py", "23 decisions, none open",
+      [r"23 semantic decisions over 26 core ops", r"\[open\]\s+0", r"\[measured\]\s+5"])
 
 # --- Volta decision procedure ------------------------------------------------
 claim("volta_check.py", "Volta bridge: 7/7 identities; softmax naive==safe 16/16 and 128/128",
@@ -213,12 +219,49 @@ def run(script, args):
     out = "\n".join(l for l in out.split("\n") if not re.search(r"warning:|note:|\^~|In file|^\s*\d+ \|", l))
     return out, time.time() - t0
 
+def environment():
+    """What this machine is, read rather than assumed.
+
+    The `[sm_75]` tags are claims about Turing.  On another architecture some of
+    them are expected to answer differently -- `dot.precision` says tf32 is
+    a permission the hardware ignores, which is true of sm_75 and false from
+    Ampere on -- and the README's rule is that this is information, not a failure.
+    Acting on that rule requires knowing which architecture the run is on."""
+    code = ("import torch, triton;"
+            "cc = torch.cuda.get_device_capability() if torch.cuda.is_available() else None;"
+            "print(torch.__version__, triton.__version__, torch.version.cuda,"
+            "      ('sm_%d%d' % cc) if cc else 'no-cuda',"
+            "      torch.cuda.get_device_name(0) if cc else '-')")
+    try:
+        p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=600)
+        tv, trv, cu, arch, *name = p.stdout.split()
+        return {"torch": tv, "triton": trv, "cuda": cu, "arch": arch, "name": " ".join(name)}
+    except Exception as e:
+        return {"torch": "?", "triton": "?", "cuda": "?", "arch": "unknown",
+                "name": f"could not read the device ({type(e).__name__})"}
+
+
 if __name__ == "__main__":
-    ok_n = 0; total = 0
+    env = environment()
+    print(f"  torch {env['torch']}  triton {env['triton']}  cuda {env['cuda']}  "
+          f"{env['arch']}  {env['name']}")
+    # Only when the architecture was actually READ.  "unknown" means the probe
+    # failed -- a broken torch, no CUDA -- and exempting 15 claims from the count on
+    # the strength of a failed probe would turn the loudest possible breakage into a
+    # clean-looking run.
+    other_arch = env["arch"].startswith("sm_") and env["arch"] != "sm_75"
+    if not env["arch"].startswith("sm_"):
+        print(f"  could not read the device ({env['arch']}: {env['name']}).  Every claim below "
+              f"is counted\n  as usual -- an unreadable device is not a reason to excuse one.")
+    elif other_arch:
+        print(f"  the [sm_75] claims were measured on Turing.  On {env['arch']} one that does "
+              f"not reproduce\n  is printed as [arch] and left out of the count -- see the "
+              f"README on why that is\n  information rather than a failure.")
+    print()
+    ok_n = 0; total = 0; arch_n = 0
     for script, args, desc, pats, tag, slow in CLAIMS:
         if slow and not ALL:
             print(f"  skip  {script:<16} {desc}  (--all)"); continue
-        total += 1
         out, dt = run(script, args)
         missing = [p for p in pats if not re.search(p, out)]
         if script == "kernelbook_run.py" and args == ("0", "40"):
@@ -232,7 +275,19 @@ if __name__ == "__main__":
             # a tol=True FAIL is allowed only when the tolerance test was vacuous (degenerate params)
             for m_ in re.finditer(r"^\[ *\d+\] FAIL\s+tol=True(.*)$", out, re.M):
                 if "DEGEN" not in m_.group(1): missing.append("NEGATIVE: tol=True row judged FAIL without DEGEN: " + m_.group(0)[:80])
+        if missing and tag == "sm_75" and other_arch:
+            # Printed in full regardless.  "Expected to differ" is not "do not look":
+            # an unexplained difference here is still worth reading, it just is not
+            # this run's verdict on this code.
+            arch_n += 1
+            print(f"  arch  {script:<16} {dt:6.1f}s  [{tag} claim, run on {env['arch']}] {desc}")
+            for m in missing: print(f"          differs: /{m}/")
+            continue
+        total += 1
         ok = not missing; ok_n += ok
         print(f"  {'ok  ' if ok else 'FAIL'}  {script:<16} {dt:6.1f}s  {('['+tag+'] ') if tag else ''}{desc}")
         for m in missing: print(f"          missing: /{m}/")
     print(f"\n{ok_n}/{total} claims reproduce")
+    if arch_n:
+        print(f"{arch_n} [sm_75] claim(s) not counted: this is {env['arch']}, and another "
+              f"architecture answering differently is information, not a failure")

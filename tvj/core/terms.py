@@ -1,13 +1,23 @@
-"""Hash-consed real-valued term algebra -- same API as terms.py, O(arity) keys.
+"""Hash-consed real-valued term algebra: O(arity) keys, AC normal form.
 
-terms.py built each term's key from its children's full keys, so hashing or
-comparing a key cost O(size of the DAG below it); a 128-deep nested max inside
-every element of a 2048-element output made that quadratic.  Here every
-interned term gets a sequential `uid` and compound keys hold children's uids.
-Within one pool identity == structure (hash-consing), so ordering arguments by
-uid is a canonical order and the AC normal form is unchanged.
+Every interned term gets a sequential `uid`, and a compound term's key holds its
+children's uids rather than their keys.  The first version of this module built
+each key from the children's full keys, so hashing or comparing one cost O(size
+of the DAG below it), and a 128-deep nested max inside every element of a
+2048-element output made that quadratic.  (`git log -- tvj/core/` has it.)
 
-Model: tensor elements are REALS (Volta's choice) -- see terms.py for why.
+Within one pool identity == structure, so ordering arguments by uid is a
+canonical order, and `add`, `mul`, `max` and `min` can normalise for
+associativity and commutativity.  That is what makes most of the judge's
+comparisons free: the two sides come out as the same object and no solver runs.
+
+Model: tensor elements are REALS (Volta's choice), which is what makes
+reassociation -- split-K, flash attention, tree reductions -- cost nothing.
+CONSTANTS are the one place that model is approximated: they are folded at fp32
+working precision, so two terms whose constants differ by less than an fp32 ulp
+are the same term.  A recorded decision rather than an accident, and one that can
+only ever go quiet: `const.folding-precision` in tvj/core/semantics.py, next to
+the literal-reading rule it follows from.
 """
 _pool = {}
 _uid = [0]
@@ -157,10 +167,10 @@ def div(a, b):
     if isinstance(b, Const) and b.v != 0.0: return mul(a, const(1.0 / b.v))
     return _hc(App("div", (a, b)))
 def select(c, a, b):
-    c, a, b = lift(c), lift(a), lift(b)
     """Piecewise value.  Not case-split: `select` is an uninterpreted 3-ary atom,
     exactly as Volta canonicalises it, so two piecewise kernels are equal when
     their conditions and branches are.  Concrete conditions fold."""
+    c, a, b = lift(c), lift(a), lift(b)
     if c is TRUE: return a
     if c is FALSE: return b
     if a is b: return a

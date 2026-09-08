@@ -13,11 +13,15 @@ so no policy can aim at it.  A TTIR construct we do not model is a target.
     python3 -m tvj.measure.limits [--md]
 """
 import collections, json, os, sys
+from tvj.root import at
 
 DECIDED = ("PASS", "FAIL", "PASS-ASSUMING")
 
-CORPORA = [("KernelBook", "data/kb_live.jsonl", 400),
-           ("LLM traces", "results/triton_traces.jsonl", 156)]
+# First existing path wins.  `results/` holds the committed record and `data/` the
+# one the current run is appending to, so a working tree mid-run reads its own
+# fresher numbers and a clean clone reads the published ones.
+CORPORA = [("KernelBook", ("data/kb_live.jsonl", "results/kernelbook.jsonl"), 400),
+           ("LLM traces", ("results/triton_traces.jsonl",), 156)]
 
 # (label, steerable?, predicate).  Order matters: the first match wins, and the
 # residue at the end is the honest "the method cannot decide" number.
@@ -60,21 +64,39 @@ def classify(recs, total=None):
     return out
 
 
-def load(path):
-    rows = {}
-    if not os.path.exists(path): return []
-    for ln in open(path):
-        ln = ln.strip()
-        if ln:
-            rec = json.loads(ln); rows[rec["i"]] = rec       # last write wins
-    return [rows[i] for i in sorted(rows)]
+def load(paths):
+    """The run record for one corpus, or None when there is no record at all.
+
+    None and [] are different facts and the table cannot tell them apart on its
+    own: `classify` charges every row it has no record for to the HANG bucket,
+    which is right for the one row that hangs and catastrophic for a file that was
+    never there.  On a clean clone -- `data/` is generated, so the KernelBook
+    record is absent -- that printed a table reading "0 % judged, 100 % hangs the
+    judge", with no error and exit 0, ready to be pasted over the README section
+    whose comment says this script generates it."""
+    for p in paths:
+        if not os.path.exists(at(p)): continue
+        rows = {}
+        for ln in open(at(p)):
+            ln = ln.strip()
+            if ln:
+                rec = json.loads(ln); rows[rec["i"]] = rec   # last write wins
+        return [rows[i] for i in sorted(rows)]
+    return None
 
 
 if __name__ == "__main__":
     md = "--md" in sys.argv
     data = []
-    for title, path, total in CORPORA:
-        recs = load(path)
+    for title, paths, total in CORPORA:
+        recs = load(paths)
+        if recs is None:
+            sys.exit(f"limits: no run record for {title} -- looked in "
+                     f"{', '.join(paths)}.\n"
+                     f"  This table is generated FROM the corpus run; without the record there is\n"
+                     f"  nothing to generate.  Run ./run_all.sh (hours, and a GPU), or fetch the\n"
+                     f"  published record.  Printing a table anyway is how this script once\n"
+                     f"  reported that 100 % of KernelBook hangs the judge.")
         data.append((title, recs, total, classify(recs, total)))
 
     hdr = ["", *[t for t, _, _, _ in data], "can a generator steer into it?"]

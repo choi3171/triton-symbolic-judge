@@ -11,11 +11,14 @@ bucket, and the honest number is how few of them say PASS or FAIL.
 import collections, glob, json, os, statistics, sys
 
 CORPORA = {
+    # `jsonls` in increasing precedence: the record a run is appending to under
+    # `data/` is fresher than the one published under `results/`, and `data/` is
+    # generated, so a clean clone has only the published one.
     "kb":     dict(title="KernelBook (Inductor-generated)",
-                   jsonl="data/kb_live.jsonl", globs=("data/kb_*_*.json",),
-                   label=None, name="name"),
+                   jsonls=("results/kernelbook.jsonl", "data/kb_live.jsonl"),
+                   globs=("data/kb_*_*.json",), label=None, name="name"),
     "traces": dict(title="LLM-generated Triton",
-                   jsonl="results/triton_traces.jsonl", globs=(),
+                   jsonls=("results/triton_traces.jsonl",), globs=(),
                    label="label", name="model"),
 }
 # PASS-ASSUMING is decided, but only within a stated assumption the judge cannot
@@ -31,8 +34,9 @@ def load(c):
             if any(s in f for s in ("live", "partial", "kernelbook_400")): continue
             try: recs += json.load(open(f))
             except (ValueError, OSError): pass
-    if os.path.exists(c["jsonl"]):                       # appended in time order: latest wins
-        for line in open(c["jsonl"]):
+    for p in c["jsonls"]:                                # appended in time order: latest wins
+        if not os.path.exists(p): continue
+        for line in open(p):
             try: recs.append(json.loads(line))
             except ValueError: pass
     by = {r["i"]: r for r in recs if "i" in r}

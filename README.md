@@ -9,13 +9,16 @@ The motivating question: LLM-generated GPU kernels that pass a tolerance test �
 are they actually correct?
 
 ```
-./setup.sh          # fetch Volta, KernelBench and the corpora; build the bridge
-python3 verify.py   # re-run every experiment behind every claim here (35/35, ~6 min)
+pip install -r requirements.txt   # torch has to be a CUDA build -- see the file
+./setup.sh                        # fetch Volta, KernelBench and the corpora; build the bridge
+python3 verify.py                 # re-run every claim here (35/35, ~6 min)
 ```
 
 Every number below is produced by a script that `verify.py` re-runs and matches
 against the claim. Claims that depend on the GPU are tagged `[sm_75]`; another
-architecture answering differently is information, not a failure.
+architecture answering differently is information, not a failure, and `verify.py`
+reads the device it is on so it can report those claims apart from the count
+rather than as failures.
 
 ## How it works
 
@@ -89,7 +92,11 @@ Two of the five are checked against hardware before they are reported.
 **Value** is checked at its witness point — the concrete input where the two
 terms take different values. If the GPU does not reproduce the disagreement
 there, the verdict is UNKNOWN, not FAIL. Every false positive this project has
-produced was caught by that rule.
+produced was caught by that rule. "Reproduces" is measured *relative to the
+reference's own magnitude*, for the reason row 308 below is in this README at
+all: a bar spelled in absolute terms hides a 190 % error under an output of
+~1e-4, and at an output of ~1e8 it is below float32's own spacing and means
+nothing either way.
 
 **Accuracy** is checked at the input regime that made it fire. Cancellation is
 silent at the benchmark's inputs — that is the entire reason the check exists —
@@ -198,10 +205,12 @@ disagreement.
   `(e^{2x}−1)/(e^{2x}+1)`, exact over the reals and NaN in float32 above
   x = 44.4. The GPU is non-finite there and the reference is not.
 
-Across the 304 decided KernelBook rows, the tolerance test and the judge **agree
-on 296 and disagree on 8, all in one direction**: 4 rows the tolerance test
-passes and the judge fails, 24 both fail. Zero rows fail the tolerance test and
-pass the judge.
+Across the 304 decided KernelBook rows the tolerance test and the judge **agree
+on 296** — 272 both pass, 24 both fail — **and part company on 8, all in one
+direction**: 4 rows the tolerance test passes and the judge fails, and 4 it
+cannot judge at all, because both sides draw randomness and there is nothing to
+compare; those the judge decides as PASS-ASSUMING. Zero rows fail the tolerance
+test and pass the judge.
 
 **An honest negative produced the fifth check.** Catastrophic cancellation
 (`E[X²]−E[X]²`) went uncaught for a long time, and correctly so: the two forms
@@ -244,7 +253,11 @@ and a 90th percentile of 1.44 s.
 ## Limits
 
 <!-- generated: `python3 -m tvj.measure.limits`.  Do not hand-edit; the version
-     written by hand drifted every time a corpus was re-run. -->
+     written by hand drifted every time a corpus was re-run.  It reads the two run
+     records -- `results/kernelbook.jsonl` and `results/triton_traces.jsonl`, or
+     the live `data/kb_live.jsonl` if a run is in progress -- and refuses to print
+     a table when one of them is missing, where it used to print "100 % hangs the
+     judge" instead. -->
 
 **Judged coverage.** 76 % of 400 Inductor-generated rows, 63 % of 156 LLM-written rows.
 

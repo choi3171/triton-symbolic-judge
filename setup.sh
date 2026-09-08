@@ -3,6 +3,44 @@
 set -e
 cd "$(dirname "$0")"
 
+# Preflight.  Everything below assumes torch, triton, numpy, z3 and datasets are
+# importable and that cargo is on PATH.  Without this the first sign of a missing
+# dependency is a traceback out of a HuggingFace loader, two git clones and
+# several minutes in, and the README's two-line quickstart never said to install
+# anything at all.
+python3 - <<'CHECK'
+import importlib.util, sys
+need = [("torch", "torch"), ("triton", "triton"), ("numpy", "numpy"),
+        ("z3", "z3-solver"), ("datasets", "datasets")]
+miss = [pkg for mod, pkg in need if importlib.util.find_spec(mod) is None]
+if miss:
+    sys.exit("setup: missing Python packages: " + " ".join(miss) +
+             "\n  pip install -r requirements.txt"
+             "\n  (see that file: torch has to be a CUDA build)")
+import torch, triton
+print(f"  torch {torch.__version__}  triton {triton.__version__}  cuda {torch.version.cuda}")
+if not torch.cuda.is_available():
+    sys.exit("setup: no CUDA device.  The judge runs every candidate on the GPU: the"
+             "\n  hardware gate that decides whether a FAIL is believed is not optional.")
+cc = torch.cuda.get_device_capability()
+print(f"  device {torch.cuda.get_device_name(0)}  sm_{cc[0]}{cc[1]}")
+if cc != (7, 5):
+    print(f"  note: the [sm_75] claims were measured on Turing.  On sm_{cc[0]}{cc[1]} some of them"
+          "\n  are expected to answer differently; verify.py reports those apart from the"
+          "\n  count rather than as failures.")
+CHECK
+command -v cargo >/dev/null || {
+  echo "setup: cargo is not on PATH -- the Volta bridge is Rust (see requirements.txt)"; exit 1; }
+# The bridge depends on gmp-mpfr-sys, which builds GMP from source, and GMP's
+# configure wants a C toolchain and m4.  Without m4 cargo gets all the way through
+# fetching and compiling the Rust half before dying inside a shell script with
+# "No usable m4 in $PATH", which reads like a Rust problem and is not one.
+for tool in cc make m4; do
+  command -v "$tool" >/dev/null || {
+    echo "setup: $tool is not on PATH.  The Volta bridge builds GMP from source:"
+    echo "  sudo apt install build-essential m4        # Debian/Ubuntu"; exit 1; }
+done
+
 # Volta's decision procedure (MIT).  We use only volta_analysis::canon; its PTX
 # frontend is never invoked -- see PIPELINE.md.
 [ -d ../volta ] || git clone https://github.com/willtunnels/volta.git ../volta

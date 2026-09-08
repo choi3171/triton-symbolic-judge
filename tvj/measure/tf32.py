@@ -25,5 +25,17 @@ for prec in ("ieee", "tf32"):
     torch.cuda.synchronize(); outs[prec] = C.cpu().numpy()
     print(f"  input_precision={prec:5s}  max|gpu-float64| = {np.abs(outs[prec]-f64).max():.3e}")
 print(f"\n  ieee and tf32 bitwise identical on this GPU? {np.array_equal(outs['ieee'], outs['tf32'])}")
-print(f"  device: {torch.cuda.get_device_name(0)} (sm_75, no TF32 tensor cores)")
+# The architecture is READ, not asserted.  This line said "(sm_75, no TF32 tensor
+# cores)" as a literal, so on any other GPU it printed a false statement next to a
+# true device name -- and the claim above it is a claim ABOUT the architecture.
+cc = torch.cuda.get_device_capability()
+has_tf32 = cc >= (8, 0)
+print(f"  device: {torch.cuda.get_device_name(0)} (sm_{cc[0]}{cc[1]}, "
+      f"{'HAS TF32 tensor cores' if has_tf32 else 'no TF32 tensor cores'})")
 print(f"  expected max error if tf32 were honoured (10-bit mantissa): ~1e-3")
+if has_tf32:
+    print("  NOTE: this is Ampere or later, where tf32 is honoured rather than ignored.\n"
+          "  The decision `dot.precision` in semantics.py was measured on sm_75 and\n"
+          "  says a permission the hardware cannot grant is a no-op; here the hardware CAN\n"
+          "  grant it, so ieee and tf32 are expected to differ and the sm_75 claim is\n"
+          "  expected not to reproduce.  That is information, not a failure.")

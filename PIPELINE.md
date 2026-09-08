@@ -1,45 +1,58 @@
-# 파이프라인
+# Pipeline
 
-한 문장: **참조 PyTorch 모듈과 생성된 Triton 커널을 각각 같은 항 대수로 내린 뒤, 다섯 가지
-의무로 비교한다.** 값은 실수 위에서, 메모리는 그리드 전체 심볼릭 실행으로, 정밀도는 격자
-위에서, 유효성은 구간으로, 정확도는 f32와 f64를 나란히 돌려서. shape는 계약이 요구하는
-만큼 덮는다.
+One sentence: **lower the reference PyTorch module and the generated Triton
+kernel into the same term algebra, then compare them under five obligations.**
+Value over the reals, memory by symbolically executing the whole grid, precision
+on a lattice, float-validity by intervals, accuracy by running f32 and f64 side
+by side. Shapes are covered as far as the kernel's own contract demands.
 
-판정 자체는 전부 `tvj/judge/judge.py` 하나에 있다. 코퍼스 러너(`tvj/judge/kernelbook_run.py`,
-`tvj/judge/traces_run.py`)는 각자의 행을 `Candidate`(참조 모듈 + 커널 실행 함수 + 입력)로 바꾸는
-어댑터일 뿐이고, 그 뒤는 두 코퍼스가 같은 코드를 지난다.
+The judgement itself lives entirely in `tvj/judge/judge.py`. The corpus runners
+(`tvj/judge/kernelbook_run.py`, `tvj/judge/traces_run.py`) are adapters whose
+only job is to turn one row into a `Candidate` — a reference module, a callable
+that runs the kernel, and the inputs. After that both corpora take the same path
+through the same code.
 
 ```
-        참조 PyTorch 모듈                     생성된 Triton 커널
+     reference PyTorch module                generated Triton kernel
               │                                      │
-   symbolic_module()                          capture()  ← JITFunction.run 후킹
-   파라미터/버퍼 → 심볼                        실제 GPU 런치를 기록
+   symbolic_module()                          capture()  ← hooks JITFunction.run
+   parameters/buffers → symbols                records the real GPU launches
               │                                      │
-   forward(STensor…)                          Launch: 시그니처·constexpr·grid·역할
-   __torch_function__ 가로채기                        │
-              │                                to_ttir() → ttir.parse()
-              │                                       │
-              │                                sexec.Interp  그리드 전체 심볼릭 실행
-              ▼                                       ▼
-        항 DAG (terms.py)  ←── 같은 정규형 ──→  항 DAG (terms.py)
+   forward(STensor…)                          Launch: signature, constexprs,
+   intercepted by __torch_function__                  grid, roles
+              │                                      │
+              │                               to_ttir() → ttir.parse()
+              │                                      │
+              │                               sexec.Interp: symbolic execution
+              │                                      over the WHOLE grid
+              ▼                                      ▼
+        term DAG (terms.py)  ←── same normal form ──→  term DAG (terms.py)
                               │
-       ┌────────┬────────┴───────┬────────────┬────────────┐
-     값 의무   메모리 의무    정밀도 의무   전제조건 의무   정확도 의무
-   AC 정규형   미기록 버퍼      격자 비교      구간 분석    f32 vs f64
-   → Volta     레이스         opt ≥ ref     radius 비교   shift 레짐
-   → Z3 분할   커버리지
-   → 수치 증인
-        │
-   하드웨어 게이트: 증인점에서 GPU가 재현 못하면 FAIL이 아니라 UNKNOWN.
-   나머지 넷은 게이트하지 않는다 — 하드웨어가 구조적으로 침묵하는 의무들이라
-   재현을 요구하면 테스트가 못 잡는 결함만 골라서 버리게 된다.
+        ┌─────────┬───────────┼────────────┬────────────┐
+      value     memory     precision   precondition   accuracy
+    AC normal  unwritten    lattice      intervals     f32 vs f64
+    form       buffers      opt ≥ ref    radius        at shifted
+    → Volta    races                     comparison    regimes
+    → Z3 split coverage
+    → numeric
+      witness
+                              │
+   Hardware gate: if the GPU does not reproduce the disagreement at the witness
+   point, the verdict is UNKNOWN rather than FAIL.  Accuracy is gated the same
+   way but at the REGIME that fired.  The other three are not gated — hardware is
+   structurally silent for them, so demanding reproduction would discard exactly
+   the defects a test cannot reach.
 ```
 
-## 1. 스펙 쪽 — PyTorch 모듈에서 무엇을 어떻게 뜯어오나
+Before any of the five: the kernel is run twice at the same inputs and the two
+answers must agree. If they do not, the verdict is `NONDETERMINISTIC` and nothing
+below would mean anything anyway.
 
-핵심은 **모듈 코드를 한 줄도 고치지 않는다**는 것이다. 두 개의 후킹으로 끝난다.
+## 1. The spec side — what is taken out of the PyTorch module, and how
 
-**(a) 파라미터를 심볼로 바꿔치기** — `spec.symbolic_module(model)`
+The point is that **not one line of the module is edited**. Two hooks do it.
+
+**(a) Parameters become symbols** — `spec.symbolic_module(model)`
 
 ```python
 for mname, m in model.named_modules():
@@ -49,36 +62,49 @@ for mname, m in model.named_modules():
         m._buffers[bn] = STensor.input("b_" + ...)
 ```
 
-`nn.Module`의 파라미터/버퍼를 `_parameters` / `_buffers` 딕셔너리에서 직접 갈아끼운다.
-`STensor.input(name, shape)`은 `[T.sym(name, 0), T.sym(name, 1), …]`을 shape대로 접은
-numpy object 배열이다. 즉 `linear1.weight[3]`이 `p_linear1.weight[3]`이라는 **심볼 하나**가
-된다. 역할 이름이 그대로 심볼 이름이라 나중에 커널 쪽 버퍼와 맞춘다.
+The parameters and buffers of an `nn.Module` are swapped out directly in the
+`_parameters` / `_buffers` dictionaries. `STensor.input(name, shape)` is a numpy
+object array of `[T.sym(name, 0), T.sym(name, 1), …]` folded to the shape — so
+`linear1.weight[3]` becomes the single symbol `p_linear1.weight[3]`. The role
+name *is* the symbol name, which is how the kernel side's buffers are matched to
+it later.
 
-**(b) 연산자와 torch 함수 가로채기**
+**(b) Operators and torch functions are intercepted**
 
-- `STensor.__add__`, `__mul__`, `__matmul__` … → numpy 브로드캐스트 + `Term.__add__`
-- `torch.matmul(x, …)`, `F.softmax(…)` → `STensor.__torch_function__`이 받아
-  `_TORCH` 디스패치 표로 보냄
+- `STensor.__add__`, `__mul__`, `__matmul__`, … → numpy broadcasting plus
+  `Term.__add__`
+- `torch.matmul(x, …)`, `F.softmax(…)` → `STensor.__torch_function__` dispatches
+  through the `_TORCH` table
 
-그래서 `model.forward(STensor(...))`를 그냥 호출하면 참조 코드가 **수정 없이** 항 DAG를
-낸다. 출력 텐서의 원소 하나하나가 항 하나다.
+So calling `model.forward(STensor(...))` makes the reference code emit a term DAG
+**unmodified**. Every element of the output tensor is one term.
 
-`_TORCH`에 없는 연산자는 `NotImplementedError` → 판정 `SPEC-UNSUPPORTED`. 값을 바꿀 수
-있는 kwarg를 모르면 조용히 버리지 않고 에러를 낸다 (`F.linear(..., bias=)`를 삼켜서
-false FAIL 6건을 냈던 사고 이후 규칙).
+An operator not in `_TORCH` raises `NotImplementedError` → verdict
+`SPEC-UNSUPPORTED`. A kwarg that could change the value and is not understood
+raises rather than being dropped silently — the rule dates from swallowing
+`F.linear(..., bias=)` and producing six false FAILs.
 
-**스펙 쪽 결정 둘** (`tvj/core/semantics.py`에 기록):
-- `spec.softmax-form`: softmax는 max-subtracted로 정의. 실수 동치이고, torch가 실제로
-  계산하는 형태이고, 유효 반경이 무제한이고, Volta 비용이 ~10배 싸다.
-- `literal.working-precision`: float 리터럴은 fp32 작업 정밀도로 읽는다. `1e-5`와 TTIR의
-  `9.99999974e-06`은 같은 상수다.
+**Two spec-side decisions**, recorded in `tvj/front/spec.py`'s own docstring:
 
-## 2. 커널 쪽 — 생성된 코드에서 무엇을 뜯어오나
+- `spec.softmax-form`: softmax is defined max-subtracted, `exp(x - max x) / sum`.
+  Equal over the reals to `exp(x)/sum`; it is what torch computes; its
+  float-validity radius is unbounded, so the precondition obligation compares
+  kernels against the best known form; and matched forms canonicalise ~10×
+  more cheaply in Volta.
+- `spec.reduce-order`: reductions are n-ary AC sums, and no order is implied.
 
-생성기에 요구하는 인터페이스는 **`launch(*inputs) -> output` 하나뿐**이다. 포맷도,
-커널 이름도, 파라미터 순서도 안 본다.
+What the two sides make of a *constant* is settled in `tvj/core/semantics.py`
+instead: `literal.working-precision` reads float literals at fp32 working
+precision, so `1e-5` and the TTIR's `9.99999974e-06` are one constant, and its
+companion `const.folding-precision` says the same of constants folded together
+inside a term.
 
-**(a) 실제 런치를 가로챈다** — `capture.capture()`
+## 2. The kernel side — what is taken out of the generated code
+
+The only thing asked of a generator is **`launch(*inputs) -> output`**. Not the
+format, not the kernel's name, not the parameter order.
+
+**(a) The real launches are intercepted** — `capture.capture()`
 
 ```python
 _calls, _orig = [], JITFunction.run
@@ -87,55 +113,76 @@ def _rec(self, *args, grid, warmup=False, **kwargs):
     return _orig(self, *args, grid=grid, warmup=warmup, **kwargs)
 ```
 
-`JITFunction.run`을 갈아끼우고 코드를 **GPU에서 실제로 돌린다**. 그래서 한 번의 호출로
-tolerance 테스트용 출력과 판정용 정보가 동시에 나온다. `extern_kernels.mm/addmm/bmm/
-baddbmm/convolution`(Inductor가 matmul을 cuBLAS로 보내는 경로)도 같이 감싼다.
+`JITFunction.run` is swapped out and the code is **actually run on the GPU**, so
+one call produces both the output a tolerance test needs and the information the
+judgement needs. `extern_kernels.mm/addmm/bmm/baddbmm/convolution` — the path
+Inductor sends matmuls down to cuBLAS — is wrapped the same way.
 
-**(b) 텐서를 역할에 매핑 — 객체가 아니라 스토리지로**
+**(b) Tensors are mapped to roles by storage, not by object**
 
 ```python
-base_of(t)      = t.untyped_storage().data_ptr()     # 뷰가 아니라 실제 할당
+base_of(t)      = t.untyped_storage().data_ptr()     # the allocation, not the view
 elem_offset(t)  = (t.data_ptr() - base_of(t)) // t.element_size()
-physical_offsets(t) = [off + Σ idx·stride]            # 비연속 stride 처리
+physical_offsets(t) = [off + Σ idx·stride]           # non-contiguous strides
 ```
 
-Inductor는 `reinterpret_tensor`로 뷰를 만들고 출력 stride가 비연속일 수 있다. 그래서
-`id(tensor)`가 아니라 **스토리지 base 포인터**로 역할(`in0`, `p_linear1.weight`, `out`)을
-정하고, 논리 인덱스 → 물리 오프셋 변환을 따로 계산한다.
+Inductor hands out views via `reinterpret_tensor`, and an output's strides may be
+non-contiguous. So a role (`in0`, `p_linear1.weight`, `out`) is decided by the
+**storage base pointer** rather than by `id(tensor)`, and the logical-index →
+physical-offset mapping is computed separately.
 
-**(c) TTIR로 내려 심볼릭 실행**
+**(c) Lowered to TTIR and executed symbolically**
 
-`Launch`가 각 런치를 시그니처·constexpr·grid·버퍼 크기·인자로 분해하고 →
-`to_ttir()`로 TTIR 텍스트를 뽑고 → `ttir.parse()`가 파싱하고 → `sexec.Interp`가
-**그리드 전체**를 돈다. 여러 런치는 **하나의 공유 메모리**(`X.Grid`)에서 순서대로
-실행돼 파이프라인(kernel → extern mm → kernel)이 이어진다.
+`Launch` decomposes each launch into signature, constexprs, grid, buffer sizes
+and arguments → `to_ttir()` extracts the TTIR text → `ttir.parse()` parses it →
+`sexec.Interp` walks the **whole grid**. Several launches run in order against
+**one shared memory** (`X.Grid`), so a pipeline (kernel → extern mm → kernel)
+stays connected.
 
-정수는 구체값이다(shape 고정 ⇒ 주소·마스크·루프 경계가 전부 수). 그 부산물로 OOB,
-write-conflict, 미기록 버퍼 의존이 **공짜로** 잡힌다.
+Integers are concrete — fixed shapes mean every address, mask and loop bound is a
+number. Out-of-bounds reads, write conflicts and dependence on an unwritten
+buffer fall out of that **for free**.
 
-## 3. 만나는 지점
+## 3. Where the two meet
 
-양쪽 다 `tvj/core/terms.py`의 해시콘싱된 항을 낸다. 비교 단위는 **출력 원소 하나**:
+Both sides produce hash-consed terms from `tvj/core/terms.py`. The unit of
+comparison is one output element:
 
 ```
-스펙:   spec.flat()[i]
-커널:   grid.store[("out", physical_offsets(out)[i])]
+spec:    spec.flat()[i]
+kernel:  grid.store[("out", physical_offsets(out)[i])]
 ```
 
-## 4. 네 의무
+## 4. The five obligations
 
-| 의무 | 무엇을 묻나 | 어떻게 |
+| obligation | what it asks | how |
 |---|---|---|
-| **값** | 실수 위에서 같은 식인가 | AC 정규형으로 판정 → 못 가르면 Volta `check_equivalent` → false면 **수치 증인** 필요 (없으면 UNKNOWN) |
-| **정밀도** | 최적화 쪽이 참조보다 덜 정밀하지 않은가 | `exact > ieee > tf32x3 > tf32 > f16 > bf16` 격자, 항마다 태그 추적 |
-| **전제조건** | 실수 증명이 float32에 대해 말하는 입력 범위 | `tvj/decide/ranges.py` 구간 분석 + softmax 관계 규칙 3개, radius 비교 |
-| **shape 커버리지** | 넘긴 shape 밖에서도 맞는가 | 커널 계약(전제조건 + 잔여류)을 적고 greedy set cover로 최소 비용 덮기 |
+| **value** | the same expression over the reals? | AC normal form decides most pairs outright → Volta `check_equivalent` → Z3 case splitting for piecewise terms → a **numeric witness** is required before a FAIL (without one, UNKNOWN) |
+| **memory** | does it read what nothing wrote, skip an output, or race with itself? | the errors `sexec` records over the whole grid: unwritten-buffer reads, out-of-bounds, write conflicts, read-write races |
+| **precision** | is the optimised side not *less* precise than the reference? | the lattice `exact > ieee > tf32x3 > tf32 > f16 > bf16`, tracked per term, compared against the reference's own output dtype |
+| **precondition** | over what input range does the real-number proof still say something about float32? | interval analysis in `tvj/decide/ranges.py` plus three softmax relational rules; validity radii compared |
+| **accuracy** | the same expression, arranged so float32 loses digits? | `tvj/decide/accuracy.py` evaluates both terms in f32 and in f64 at regimes that stress cancellation, and compares the two *errors* |
 
-## 5. 신뢰 경계 (검증 안 하는 것)
+A verdict names the obligation that failed. `PASS-ASSUMING` is a pass carrying an
+assumption the judge cannot discharge — `index-distinct` for a scatter to a
+data-dependent address, `rng-correspondence` when both sides draw randomness.
 
-- **Triton 백엔드**: TTIR까지만 본다. TTIR→PTX/GCN 컴파일은 신뢰. (Volta는 PTX라 이걸
-  검증하지만 NVIDIA에 묶인다.)
-- **extern 호출**: cuBLAS/cuDNN은 스펙 수준으로 모델링하고 **신뢰**로 표시. 판정 결과에
-  신뢰한 호출 수를 같이 보고한다.
-- **우리 인터프리터**: soundness 논증이 비형식적이다. Volta는 confluence를 Agda로 증명함.
-- **측정 항목**: 전부 sm_75. tf32·bf16·cp.async 경로는 재보지 않았다.
+**Shape coverage** is not one of the five; it is how the shapes to judge *at* are
+chosen. `tvj/checks/suite.py` writes down the kernel's contract (its
+preconditions plus its residue classes) and picks a minimum-cost covering set of
+shapes greedily — which is how `bug_swizzle` is caught at (48, 48, 48) with no
+hint.
+
+## 5. The trust boundary (what is *not* verified)
+
+- **The Triton backend**: only TTIR is read. The TTIR→PTX/GCN compilation is
+  trusted. (Volta verifies that layer because it works on PTX, at the cost of
+  being tied to NVIDIA.)
+- **extern calls**: cuBLAS/cuDNN are modelled at the spec level and marked
+  **trusted**. The number of trusted calls is reported alongside the verdict.
+- **Our interpreter**: its soundness is argued informally. Volta proves its
+  confluence in Agda; we do not.
+- **The architecture**: every hardware measurement here was taken on `sm_75`, and
+  the tf32, bf16 and `cp.async` paths were never re-measured elsewhere.
+  `verify.py` prints the architecture it is running on and reports the `[sm_75]`
+  claims apart from the count when it is not that one.

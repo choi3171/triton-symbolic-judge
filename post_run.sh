@@ -4,10 +4,13 @@
 # report takes the latest record for each, so a re-judge overrides in place.
 cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 KB=$(python3 -c "
-import json
+import json, os
 rs = {}
-for l in open('data/kb_live.jsonl'):
-    r = json.loads(l); rs[r['i']] = r
+# published record first, then the one the last run appended to: same precedence
+# as tvj/judge/report.py, so a clean clone can re-judge from what is committed
+for p in ('results/kernelbook.jsonl', 'data/kb_live.jsonl'):
+    for l in (open(p) if os.path.exists(p) else []):
+        r = json.loads(l); rs[r['i']] = r
 print(','.join(str(i) for i, r in sorted(rs.items()) if r['verdict'] not in ('PASS', 'FAIL')))")
 echo "re-judging $(echo $KB | tr ',' '\n' | wc -l) KernelBook rows"
 python3 -u -m tvj.judge.kernelbook_run --rows "$KB" > results/kb_rejudge.log 2>&1
@@ -22,5 +25,9 @@ print(','.join(str(i) for i, r in sorted(rs.items()) if r['verdict'] not in ('PA
 echo "re-judging $(echo $TR | tr ',' '\n' | wc -l) trace rows"
 python3 -u -m tvj.judge.traces_run --rows "$TR" > results/tr_rejudge.log 2>&1
 
+# Publish the KernelBook record beside the LLM one.  `data/` is generated and
+# gitignored, so leaving it there was why a clean clone could regenerate half the
+# Limits table and half the report -- see tvj/measure/limits.py load().
+[ -f data/kb_live.jsonl ] && cp data/kb_live.jsonl results/kernelbook.jsonl
 python3 -m tvj.judge.report both > results/report.txt 2>&1
 echo POSTRUN-DONE

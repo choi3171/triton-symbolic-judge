@@ -1,0 +1,38 @@
+# What `setup.sh` and `verify.py` need before they can do anything.
+#
+#     pip install -r requirements.txt
+#
+# torch must be a CUDA build that your DRIVER can run.  The judge runs every
+# candidate on the GPU -- the hardware gate that decides whether a value FAIL is
+# believed is not optional, and `tvj/front/capture.py` recovers the kernel side by
+# hooking real launches -- so a torch that cannot see the device judges nothing.
+#
+# The plain PyPI `torch` is a CUDA 13 build and needs a CUDA 13 driver.  On an
+# older one it installs cleanly and then reports `cuda available: False`, with the
+# reason buried in a UserWarning; `setup.sh` stops on it rather than letting the
+# whole corpus come back as errors.  Check with `nvidia-smi` and pick the index to
+# match -- e.g. for a 545 driver (CUDA 12.3), which is what the pinned line below
+# was resolved against:
+#
+#     pip install --index-url https://download.pytorch.org/whl/cu126 torch==2.14.0+cu126
+#
+# On Linux the CUDA wheels bring `triton` with them; name it here only to pin a
+# different one than torch chose.
+torch
+triton
+numpy
+z3-solver     # tvj/decide/casesplit.py -- stage 3 of the value obligation
+datasets      # setup.sh only, to fetch the two corpora from HuggingFace
+
+# Not a Python package: the Volta bridge is Rust, and setup.sh runs
+# `cargo build --release` in bridge/, so a stable toolchain has to be on PATH.
+# It pulls in gmp-mpfr-sys, which builds GMP from source, so a C toolchain and m4
+# have to be there too -- on Debian/Ubuntu, `sudo apt install build-essential m4`.
+
+# Version sensitivity.  Nothing is pinned, because the judge is meant to run
+# against whatever Triton compiled the kernels it is judging.  One claim is an
+# exception, and it is a claim ABOUT the version rather than about a kernel:
+# `tvj/measure/layout2.py` measures which element an f32 reduction drops, and
+# Triton 3.5.1 (sequential within a thread) and 3.8.0 (pairwise) answer
+# differently at num_warps=1.  verify.py accepts both.  A third version answering
+# a third way is information, on the same rule the [sm_75] tags get.

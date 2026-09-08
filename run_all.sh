@@ -31,5 +31,9 @@ while [ "$i" -lt "$N_TR" ] && [ "$tries" -lt 12 ]; do
   i=$((nxt + 1)); tries=$((tries + 1))
 done
 
+# Publish the KernelBook record beside the LLM one.  `data/` is generated and
+# gitignored, so leaving it there was why a clean clone could regenerate half the
+# Limits table and half the report -- see tvj/measure/limits.py load().
+[ -f data/kb_live.jsonl ] && cp data/kb_live.jsonl results/kernelbook.jsonl
 python3 -m tvj.judge.report both > results/report.txt 2>&1
 echo RUN-ALL-DONE

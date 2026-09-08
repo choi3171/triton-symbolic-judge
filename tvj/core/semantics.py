@@ -123,7 +123,12 @@ DECISIONS = [
         "output element, separately from real equality.",
         "sm_75: input_precision=ieee and =tf32 bitwise identical, both 8.557e-06 "
         "from float64 (tf32 would be ~1e-3); docstring says option is ignored "
-        "without tensor cores"),
+        "without tensor cores. sm_86, the other side of the same decision: ieee is "
+        "8.557e-06 as before and tf32 is 2.529e-02, so the permission IS exercised "
+        "where the hardware can grant it. Nothing in the checker changes -- the tag "
+        "is read from the TTIR's `inputPrecision`, not from the device, and the "
+        "lattice already treats tf32 as the lower rank on both -- which is what "
+        "makes the ranking sound on an architecture that honours it"),
 
     Decision("dot.accum-order", "tt.dot",
         "In what order is the K dimension accumulated?",
@@ -201,6 +206,26 @@ DECISIONS = [
         "i128 coefficients small (exact binary fractions overflowed them). Not valid "
         "for fp64 kernels; recorded as fp32-only.",
         "KernelBook rows 3,4,26 (LayerNorm), 36 (BertLayerNorm): FAIL -> PASS under this rule"),
+
+    Decision("const.folding-precision", "(term algebra)",
+        "Two constants meet inside a term.  At what precision are they folded?",
+        "fp32, the working precision a literal is already read at: `add` and `mul` "
+        "combine coefficients and round the result back through `const`, so two terms "
+        "whose constants differ by less than an fp32 ulp are the SAME term.",
+        "documented",
+        "The companion to literal.working-precision, and arguably its consequence: if "
+        "`1e-5` and the TTIR's `9.99999974e-06` are one constant, so are `1 + 1e-8` and "
+        "`1`. It is recorded separately because the two are not the same statement and "
+        "only the first was written down. Reading a literal at working precision is a "
+        "consistent renaming and cannot change which terms are equal; FOLDING at working "
+        "precision can, and in the silent direction -- over the reals `x + 1 + 1e-8` and "
+        "`x + 1` differ, and here they are one term, decided equal by AC with no solver "
+        "call. What bounds the damage: the gap is at most one fp32 ulp of the folded "
+        "constant, both sides fold the same way, and a kernel exploiting it would have to "
+        "drop a constant too small for either program to represent at the precision it "
+        "computes in. Not valid for fp64 kernels, on the same grounds as its companion.",
+        "T.add(x, 1.0, 1e-8) is T.add(x, 1.0) -> True; the coefficient path folds the "
+        "same way, 1e-8*x + 1*x -> x"),
 
     Decision("select.symbolic", "arith.select",
         "What does select(c, a, b) mean when c compares symbolic reals?",
@@ -324,6 +349,9 @@ DECISIONS = [
 # Every `measured` entry carries an architecture tag in its evidence. sm_75 has no
 # TF32, no BF16 tensor cores and no cp.async; a measurement there says nothing
 # about Ampere+ paths, and the same TTIR may take a different path on them.
+# `dot.precision` now carries both sides, measured on sm_75 and sm_86, and the two
+# claims that separate on Ampere (measure/tf32.py, measure/difftest_mm.py) separate
+# for that one reason.  bf16 and cp.async are still sm_75-only.
 
 CORE = """AddPtrOp AdvanceOp AssertOp AtomicCASOp AtomicRMWOp BitcastOp BroadcastOp
 CatOp DotOp ExpandDimsOp FpToFpOp GetNumProgramsOp GetProgramIdOp IntToPtrOp LoadOp
