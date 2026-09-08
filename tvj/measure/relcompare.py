@@ -1,0 +1,84 @@
+"""Can a generated check see the row it was generated from?
+
+`testgen.emit` writes a check a harness runs forever after, and it inherited the
+harness's comparison: `allclose(atol=1e-2, rtol=1e-2)`.  That tolerance has an
+absolute floor, so at a small reference magnitude it can be blind to the very
+disagreement the judge found -- which would make the generated check pass the
+exploit it came from.  `compare-relative` swaps in the measure the judge's own
+hardware gate uses.  This measures both sides of that swap, because a comparison
+that catches everything is worth nothing:
+
+  sensitivity  the three FAILs whose record says absolute cannot see them, run at
+               the corpus' own seeds (`torch.manual_seed(200 + t)`, `torch.rand`)
+  specificity  rows the judge PASSes, where a relative bar must stay silent
+
+    python3 -m tvj.measure.relcompare
+"""
+import json, signal, sys
+import torch
+from tvj.judge.kernelbook_run import build
+from tvj.root import at
+
+ATOL = RTOL = 1e-2          # the harness's comparison
+REL = 1e-4                  # judge.VAL_GATE_REL
+BLIND = [100, 175, 377]     # gpu_maxdiff <= atol + rtol*scale in the record
+CONTROL = 8
+
+
+def trials(cand, n=5):
+    """(absolute miss?, relative catch?) per trial, at judge.tolerance's regime."""
+    out = []
+    for t in range(n):
+        torch.manual_seed(200 + t)
+        xs = [torch.rand(x.shape, device="cuda") if torch.is_tensor(x) else x for x in cand.inputs]
+        with torch.no_grad():
+            f = lambda o: (o[0] if isinstance(o, (tuple, list)) else o).float()
+            a, b = f(cand.model(*xs)), f(cand.run(xs))
+        ok = torch.isfinite(a) & torch.isfinite(b)
+        if not bool(ok.any()): continue
+        d = float((a[ok] - b[ok]).abs().max()); sc = float(a[ok].abs().max())
+        out.append((d <= ATOL + RTOL * sc, d / max(sc, 1e-30) > REL))
+    return out
+
+
+if __name__ == "__main__":
+    rows = json.load(open(at("data/kernelbook_400.json")))
+    kb = {}
+    for l in open(at("results/kernelbook.jsonl")):
+        r = json.loads(l); kb[r["i"]] = r
+
+    print("sensitivity -- FAILs the absolute comparison is blind to\n")
+    print(f"{'row':>4} {'name':<24} {'absolute misses':>16} {'relative catches':>17}")
+    miss = catch = tot = 0
+    for i in BLIND:
+        r = dict(rows[i]); r["i"] = i
+        signal.alarm(150); cand = build(r); signal.alarm(0)
+        ts = trials(cand)
+        m, c = sum(a for a, _ in ts), sum(b for _, b in ts)
+        miss += m; catch += c; tot += len(ts)
+        print(f"{i:>4} {r['entry_point'][:24]:<24} {f'{m}/{len(ts)} trials':>16} {f'{c}/{len(ts)} trials':>17}")
+    print(f"\n  absolute misses {miss} of {tot} trials; relative catches {catch} of {tot}")
+
+    print("\nspecificity -- rows the judge PASSes, where it must stay silent\n")
+    ctrl = [i for i, v in sorted(kb.items()) if v["verdict"] == "PASS" and v.get("tol") is True][:CONTROL]
+    worst_all, fired = 0.0, 0
+    for i in ctrl:
+        r = dict(rows[i]); r["i"] = i
+        try:
+            signal.alarm(150); cand = build(r); signal.alarm(0)
+        except Exception as e:
+            print(f"{i:>4} {r['entry_point'][:24]:<24}  skipped ({type(e).__name__})"); continue
+        w = 0.0
+        for t in range(5):
+            torch.manual_seed(200 + t)
+            xs = [torch.rand(x.shape, device="cuda") if torch.is_tensor(x) else x for x in cand.inputs]
+            with torch.no_grad():
+                f = lambda o: (o[0] if isinstance(o, (tuple, list)) else o).float()
+                a, b = f(cand.model(*xs)), f(cand.run(xs))
+            ok = torch.isfinite(a) & torch.isfinite(b)
+            if bool(ok.any()):
+                w = max(w, float((a[ok] - b[ok]).abs().max()) / max(float(a[ok].abs().max()), 1e-30))
+        worst_all = max(worst_all, w); fired += w > REL
+        print(f"{i:>4} {r['entry_point'][:24]:<24}  relative {w:.3g}")
+    print(f"\n  {fired} of {len(ctrl)} PASS rows would fire; worst relative error {worst_all:.3g} "
+          f"against a bar of {REL:g}")

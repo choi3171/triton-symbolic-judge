@@ -19,6 +19,11 @@ import collections, json, os, sys
 from tvj.root import at
 from tvj.judge.testgen import derive
 
+# Neither of these is an axis.  `pin-point` is the concrete witness -- one input,
+# which a policy steps around.  `compare-relative` says how to MEASURE, not what to
+# vary, and a row that yields only that has still yielded no axis.
+NOT_AN_AXIS = ("pin-point", "compare-relative")
+
 CORPORA = [("KernelBook", ("data/kb_live.jsonl", "results/kernelbook.jsonl")),
            ("LLM traces", ("results/triton_traces.jsonl",))]
 
@@ -42,7 +47,7 @@ if __name__ == "__main__":
             sys.exit(f"directives: no run record for {title} -- looked in {', '.join(paths)}.\n"
                      "  Counted FROM the corpus run; without the record there is nothing to count.")
         f = [r for r in recs if r["verdict"] == "FAIL"]
-        a = sum(1 for r in f if any(d.kind != "pin-point" for d in derive(r)))
+        a = sum(1 for r in f if any(d.kind not in NOT_AN_AXIS for d in derive(r)))
         per[title] = (a, len(f)); fails += f; axis += a
         for r in f: kinds.update(d.kind for d in derive(r))
 
@@ -50,9 +55,11 @@ if __name__ == "__main__":
     for t, (a, n) in per.items(): print(f"  {t:<12} an axis for {a} of {n}")
     print(f"  {'both':<12} an axis for {axis} of {len(fails)}")
     print("\ndirective kinds, by how often they fire")
-    for k in ("vary-parameter", "vary-input", "stress-regime", "poison-output", "pin-point"):
+    for k in ("vary-parameter", "vary-input", "stress-regime", "compare-relative",
+              "poison-output", "pin-point"):
         n = kinds.get(k, 0)
-        note = "  <- never on a natural corpus; hacks.py only" if k == "poison-output" and not n else \
+        note = "  <- not an axis but a measurement; see relcompare.py" if k == "compare-relative" else \
+               "  <- never on a natural corpus; hacks.py only" if k == "poison-output" and not n else \
                "  <- the fallback: a point, not an axis" if k == "pin-point" else ""
         print(f"  {k:<16} {n}{note}")
     print(f"\nan axis for {axis} of {len(fails)} FAILs; "

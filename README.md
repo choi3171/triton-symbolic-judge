@@ -197,6 +197,20 @@ disagreement rests on parameters at all, not only when one is ignored. Row 308 i
 the measured case: of the five rows whose own benchmark passes them, it is the
 one that only a parameter redraw catches.
 
+**A generated check has to be able to see the row it came from.** It inherited
+the harness's comparison — `allclose(atol=1e-2, rtol=1e-2)` — and that has an
+absolute floor, so at a small reference magnitude it is blind to a disagreement
+the judge found. Three FAILs are in that position, and two of them are rows their
+own benchmark passes. At the corpus' own seeds the absolute comparison misses 13
+of 15 trials on them; scaled by the reference's magnitude, the same measure the
+hardware gate uses, it catches 15 of 15. It stays silent where it should: on the
+rows the judge PASSes the worst relative error is 4 × 10⁻⁷ against a bar of
+10⁻⁴, so there is about 250× of headroom before ordinary float32 reassociation
+would trip it (`tvj/measure/relcompare.py`). So `compare-relative` is emitted
+when the record says the absolute floor would hide the defect — a directive that
+says how to *measure* rather than what to vary, which is why it does not count
+toward the 26.
+
 Two things that did **not** work are worth the same space. Permuting same-shaped
 inputs looked like the natural axis for the swapped-role defects — of the FAILs
 that yielded no axis under the first rule, 18 have two inputs of one shape and

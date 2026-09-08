@@ -29,8 +29,23 @@ Directives come out of the obligations, one per obligation that can name an axis
                    Whatever the allocator left there is being passed off as a
                    result, so dirty the allocator's free list first.
   pin-point        fallback: the concrete witness, as a regression case.
+
+One directive is not an axis but a MEASUREMENT.  A check derived from a
+counterexample has to be able to see that counterexample, and `allclose`'s
+absolute floor means it sometimes cannot: KernelBook row 100 disagrees by 0.0135
+where `atol=1e-2, rtol=1e-2` at |ref| = 0.77 tolerates 0.0176, so the generated
+check passed the very row it was generated from.  `compare-relative` is emitted
+when the record says that is the case, and swaps the comparison for the one the
+judge's own hardware gate uses -- scaled by the reference's magnitude.
 """
 import json, textwrap
+
+# What the corpora's own correctness checks compare with; `judge.tolerance` mirrors
+# it.  Named here because `compare-relative` exists to answer "can THAT see this?".
+HARNESS_ATOL = HARNESS_RTOL = 1e-2
+# The bar the judge's hardware gate uses (judge.VAL_GATE_REL), inlined rather than
+# imported so a generated check has no dependency on the judge.
+GATE_REL = 1e-4
 
 class Directive(dict):
     @property
@@ -81,6 +96,18 @@ def derive(rec):
                 f"{acc['regime']} the kernel's float32 error is {acc['kernel_rel_err']:.2g} "
                 f"where the reference's is {acc['spec_rel_err']:.2g}. The axis is input "
                 f"magnitude, not input distribution."))
+    # Can the harness's own comparison see what the judge saw?  `allclose` tolerates
+    # `atol + rtol*|ref|`, and the recorded pair (absolute, relative) gives back the
+    # reference's magnitude, so this is a question with an answer rather than a guess.
+    a, r = rec.get("gpu_maxdiff"), rec.get("gpu_maxrel")
+    if a is not None and r:
+        scale = a / r
+        if a <= HARNESS_ATOL + HARNESS_RTOL * scale:
+            out.append(Directive(kind="compare-relative", targets=[f"{r:.3g}"], rel=r,
+                why=f"the disagreement is {a:.3g} at a reference magnitude of {scale:.3g}, "
+                    f"which `allclose(atol={HARNESS_ATOL:g}, rtol={HARNESS_RTOL:g})` tolerates "
+                    f"-- so an absolute comparison cannot see the very defect this check is "
+                    f"derived from. Compare relative to the reference, as the judge's gate does."))
     pt = rec.get("witness_point")
     if pt: out.append(Directive(kind="pin-point", targets=sorted(pt), point=pt,
                                 why="the concrete point where reference and kernel differ."))
@@ -109,7 +136,9 @@ def emit(rec, directives=None):
            "hardware is silent at the benchmark's inputs -- which is the point")
     body = [_HEADER.format(name=rec.get("model") or rec.get("name") or "?",
                            obligation=rec.get("obligation", "?"), gpu=gpu, why=why)]
-    body.append("def check(reference, candidate, make_inputs, trials=5, tol=1e-2, seed=0):")
+    rel_d = next((d for d in directives if d.kind == "compare-relative"), None)
+    body.append(f"def check(reference, candidate, make_inputs, trials=5, tol=1e-2, "
+                f"rel={GATE_REL!r}, seed=0):")
     body.append('    """True if `candidate` still matches `reference` under this check."""')
     body.append("    g = torch.Generator().manual_seed(seed)")
     body.append("    for t in range(trials):")
@@ -142,7 +171,12 @@ def emit(rec, directives=None):
     body.append("        if bool(((~torch.isfinite(b)) & torch.isfinite(a)).any()): return False")
     body.append("        ok = torch.isfinite(a) & torch.isfinite(b)")
     body.append("        if not bool(ok.any()): continue")
-    body.append("        if not torch.allclose(a[ok], b[ok], atol=tol, rtol=tol): return False")
+    if rel_d is None:
+        body.append("        if not torch.allclose(a[ok], b[ok], atol=tol, rtol=tol): return False")
+    else:
+        body.append("        # `tol` cannot see this one -- see compare-relative in the header")
+        body.append("        _d = float((a[ok] - b[ok]).abs().max())")
+        body.append("        if _d / max(float(a[ok].abs().max()), 1e-30) > rel: return False")
     body.append("    return True")
     return "\n".join(body) + "\n"
 
