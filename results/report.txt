@@ -1,26 +1,26 @@
-== KernelBook (Inductor-generated) ==   399 rows
+== KernelBook (Inductor-generated) ==   400 rows
 
 verdict              count   share
-  PASS                 272    68.2%
-  SPEC-ERROR            29     7.3%
+  PASS                 272    68.0%
+  SPEC-ERROR            29     7.2%
   FAIL                  28     7.0%
-  SPEC-UNSUPPORTED      21     5.3%
+  SPEC-UNSUPPORTED      21     5.2%
   KERNEL-UNSUPPORTED    18     4.5%
-  UNKNOWN               17     4.3%
+  UNKNOWN               18     4.5%
   PASS-ASSUMING          4     1.0%
   TIMEOUT                4     1.0%
   TOO-LARGE              3     0.8%
   NONDETERMINISTIC       2     0.5%
-  ERROR                  1     0.3%
+  ERROR                  1     0.2%
 
-judged (PASS/FAIL): 304  (76.2%)   UNKNOWN: 17   unsupported: 39   error/timeout: 34
+judged (PASS/FAIL): 304  (76.0%)   UNKNOWN: 18   unsupported: 39   error/timeout: 34
 
 tolerance test  x  judge   (judged rows only)
   tol=True   judge=PASS    272
-  tol=False  judge=FAIL     24
+  tol=False  judge=FAIL     23
+  tol=True   judge=FAIL      5
   tol=None   judge=PASS-ASSUMING     4
-  tol=True   judge=FAIL      4
-  the interesting cell: tolerance PASSES and the judge rejects -> 4
+  the interesting cell: tolerance PASSES and the judge rejects -> 5
 
 why a row could not be judged (top 15)
      8  SPEC-ERROR         TypeError: Input type is not a torch.Tensor. Got <class 
@@ -44,28 +44,28 @@ obligations
   decided only under an assumption: 4 rows   {'rng-correspondence': 4}
   FAIL by reference grade: {'definition': 25, 'inferred-from-impl': 3}   (inferred-from-impl means torch's C++ is the authority, not a definition)
   value decided by:     {'AC': 257, 'Volta': 14, 'Volta+Z3': 1}
-  reached the Z3 case split: 26 rows
+  reached the Z3 case split: 27 rows
   precision tags:       {'exact': 275, None: 28, 'tf32/f16': 1}
   precondition worse than the reference: 0 / 276 checked
   accuracy: 0 rejected, 0 noted below the materiality floor
   memory errors recorded: 0 rows   {}
   accuracy obligation SKIPPED (not passed): 0 rows
-  trusted extern calls:  223 rows, 668 calls
+  trusted extern calls:  224 rows, 674 calls
   torch tail replayed:   0 rows
   non-deterministic:     7 rows
   degenerate parameters (the corpus' own tolerance test is vacuous): 10 rows
 
 where the time goes (seconds, per row)
-  kernel -> terms  total     547   median   0.17   p90    1.4   max    64.4   (n=372)
-  module -> terms  total     158   median   0.02   p90    1.3   max    45.4   (n=229)
-  Volta            total     202   median   0.01   p90    7.6   max   146.7   (n=56)
-  preconditions    total     267   median   0.05   p90    2.5   max    74.4   (n=237)
-  accuracy         total      22   median   0.05   p90    0.8   max     3.0   (n=92)
+  kernel -> terms  total     703   median   0.19   p90    1.6   max    77.8   (n=376)
+  module -> terms  total     217   median   0.02   p90    1.3   max    53.2   (n=241)
+  Volta            total     148   median   0.01   p90    8.9   max    84.3   (n=60)
+  preconditions    total     270   median   0.05   p90    2.3   max    69.3   (n=244)
+  accuracy         total      30   median   0.06   p90    1.4   max     4.1   (n=89)
 
 FAIL rows (28)
   [  9] GCN                        value        tol=False GPU=3.64      16 outputs differ; witness spec=0.950756 kernel=0.681205; GPU reproduces
   [ 15] GatAttention               value        tol=False GPU=2.76      64 outputs differ; witness spec=0.0389808 kernel=-0.0973412; GPU reprodu
-  [ 17] GatSymAttention            value        tol=False GPU=1.23      57 outputs differ; witness spec=-0.363893 kernel=-0.042218; GPU reproduc
+  [ 17] GatSymAttention            value        tol=True  GPU=1.23      57 outputs differ; witness spec=-0.363893 kernel=-0.042218; GPU reproduc
   [ 20] ScalarBiasScale            value        tol=False GPU=0.0955    256 outputs differ; witness spec=0.543858 kernel=0.477991; GPU reproduce
   [ 27] MaskedMSELoss              value        tol=False GPU=140       1 outputs differ; witness spec=-8.11927 kernel=131.744; GPU reproduces a
   [ 33] SparseDownSampleClose      value        tol=False GPU=1.92      256 outputs differ; witness spec=0.49827 kernel=-0.985631; GPU reproduce
