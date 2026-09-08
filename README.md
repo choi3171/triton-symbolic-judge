@@ -14,8 +14,13 @@ pip install -r requirements.txt   # torch has to be a CUDA build -- see the file
 python3 verify.py                 # re-run every claim here (35/35, ~6 min)
 ```
 
-Every number below is produced by a script that `verify.py` re-runs and matches
-against the claim. A claim that is *about the architecture* is tagged `[sm_75]`;
+Almost every number below is produced by a script that `verify.py` re-runs and
+matches against the claim. Three groups are not, and say so where they appear:
+the three-stage value split, the Cost table, and the truncation comparison under
+Prior work. Those are read off a corpus run and hand-copied, which is the thing
+the Limits table was made generated to stop; they can become claims once the run
+record they come from is published (`results/kernelbook.jsonl`). A claim that is
+*about the architecture* is tagged `[sm_75]`;
 another architecture answering differently is information, not a failure, so
 `verify.py` reads the device it is on and reports those apart from the count. A
 claim that merely needs a GPU is tagged `[gpu]` and is counted everywhere — the
@@ -74,10 +79,11 @@ failed.
 
 Value is decided in three stages, cheapest first. Terms are hash-consed and
 normalised for associativity and commutativity, so most pairs come out
-*identical* and no solver runs at all: **261 of 276** KernelBook value decisions
+*identical* and no solver runs at all: **257 of 272** KernelBook value decisions
 finish there. Volta's exponential-polynomial procedure takes 14 more. Z3 case
 splitting handles piecewise terms — the step Volta's paper says "could be handled
-by case splits" and declines to take — and settles 1.
+by case splits" and declines to take — and settles 1. (Read off
+`results/report.txt`, not asserted by `verify.py` — see above.)
 
 AC does that much of the work because of **delegation**: when both sides hand the
 same operation to the same library call with the same arguments, it becomes one
@@ -145,7 +151,7 @@ both torch and the front-end and compares the numbers. Handlers whose edge
 semantics were recovered by reading torch's C++ rather than a published
 definition are marked, and a FAIL that rests on one says so.
 
-`tvj/core/semantics.py` is the artifact underneath all of it: 22 decisions the
+`tvj/core/semantics.py` is the artifact underneath all of it: 23 decisions the
 interpreter had to make because Triton does not answer them — what a masked lane
 loads, whether i32 index arithmetic wraps, whether a reduction is a tree or a
 fold — each with its basis and its evidence, five of them measured against
@@ -226,6 +232,9 @@ accurate, while passing legitimate reassociation
 (`tvj/checks/accuracy_test.py`).
 
 ## Cost
+
+Hand-measured, not asserted by `verify.py`: `tvj/measure/scale.py` and
+`tvj/checks/volta_attn.py` are the scripts, and only their verdicts are claims.
 
 Attention at D=16, BM=BN=16, comparing three formulations pairwise:
 
@@ -364,7 +373,7 @@ approach cannot address:
   stale-buffer exploit is *equal* over the reals (the output is a buffer nobody
   wrote).
 - **Hardware corroboration** before a FAIL is reported.
-- **AC normal form before any solver**, which decides 261 of 276 value questions
+- **AC normal form before any solver**, which decides 257 of 272 value questions
   with no solver call at all.
 - **A counterexample yields an axis**, which becomes a harness check that runs
   without the judge.
@@ -377,7 +386,7 @@ reduction whole. Both make the term graph small, but they are not the same
 approximation: truncation can hide a defect that only appears past the cut. On 40
 KernelBook rows with the cap at 4, **39 verdicts agree**, and the one that
 differs is a PASS becoming UNKNOWN rather than a missed defect
-(`tvj/measure/truncated.py`). The reason is mundane — these kernels reduce over
+(`tvj/measure/truncated.py`, hand-run: it has no `verify.py` claim). The reason is mundane — these kernels reduce over
 4–16 elements, so a cap of 4 barely bites. The two choices are interchangeable
 *on this corpus*, not in general; a kernel whose reduction is where the bug lives
 would separate them, and neither corpus has one.
