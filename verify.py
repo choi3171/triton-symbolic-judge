@@ -20,8 +20,15 @@ shows up as "expected to differ" on any non-Turing machine and the headline coun
 still reads clean, which is precisely the silent direction this project exists to
 avoid.
 
-    python3 verify.py          # fast set, ~3-4 min
-    python3 verify.py --all    # + suite.py, scale to 128, attention L=64
+    python3 verify.py                    # fast set, ~3-4 min
+    python3 verify.py --all              # + suite.py, scale to 128, attention L=64
+    python3 verify.py --only volta       # just the claims whose script name matches
+    python3 verify.py --only spec,terms  # comma-separated
+
+`--only` exists because the suite is more than some machines can hold: a full run
+on a 7.7 GB WSL VM exhausted memory and took the Windows host down with it.  It
+does not lift the `--all` gate -- a claim marked slow stays skipped, and those are
+the memory-hungry ones.  `VOLTA_MEM_GB` (default 4) is the other knob.
 
 The run opens by reading the machine -- torch, Triton, CUDA and the compute
 capability -- because some of what is claimed here is a property of the device
@@ -32,6 +39,10 @@ cannot be compared with another one.
 import os, re, subprocess, sys, time
 
 ALL = "--all" in sys.argv
+ONLY = []                      # substrings matched against the script name
+for _i, _a in enumerate(sys.argv):
+    if _a == "--only" and _i + 1 < len(sys.argv): ONLY = [s for s in sys.argv[_i + 1].split(",") if s]
+    elif _a.startswith("--only="): ONLY = [s for s in _a.split("=", 1)[1].split(",") if s]
 CLAIMS = []   # (script, args, description, list of regexes that must all match, tag)
 
 def claim(script, desc, patterns, args=(), tag="", slow=False):
@@ -274,8 +285,14 @@ if __name__ == "__main__":
               f"reproduce\n  is printed as [arch] and left out of the count.  [gpu] claims are "
               f"about the judge\n  and are counted here like any other.")
     print()
+    selected = [c for c in CLAIMS if not ONLY or any(o in c[0] for o in ONLY)]
+    if ONLY and not selected:
+        # Matching nothing has to be an error.  "0/0 claims reproduce" is a
+        # clean-looking summary of having verified nothing.
+        sys.exit(f"verify: --only {','.join(ONLY)} matched no claim.  The script names are:\n  "
+                 + "\n  ".join(sorted({c[0] for c in CLAIMS})))
     ok_n = 0; total = 0; arch_n = 0
-    for script, args, desc, pats, tag, slow in CLAIMS:
+    for script, args, desc, pats, tag, slow in selected:
         if slow and not ALL:
             print(f"  skip  {script:<16} {desc}  (--all)"); continue
         out, dt = run(script, args)
@@ -303,7 +320,13 @@ if __name__ == "__main__":
         ok = not missing; ok_n += ok
         print(f"  {'ok  ' if ok else 'FAIL'}  {script:<16} {dt:6.1f}s  {('['+tag+'] ') if tag else ''}{desc}")
         for m in missing: print(f"          missing: /{m}/")
-    print(f"\n{ok_n}/{total} claims reproduce")
+    # Say so when this was a subset.  "15/15 claims reproduce" read on its own is a
+    # statement about the whole suite, and under --only it is not one.
+    scope = ""
+    if ONLY:
+        rest = len([c for c in CLAIMS if c not in selected and not (c[5] and not ALL)])
+        scope = f"  (--only {','.join(ONLY)}; {rest} other claim(s) not run)"
+    print(f"\n{ok_n}/{total} claims reproduce{scope}")
     if arch_n:
         print(f"{arch_n} [sm_75] claim(s) not counted: this is {env['arch']}, and another "
               f"architecture answering differently is information, not a failure")

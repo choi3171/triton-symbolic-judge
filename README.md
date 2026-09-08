@@ -12,6 +12,7 @@ are they actually correct?
 pip install -r requirements.txt   # torch has to be a CUDA build -- see the file
 ./setup.sh                        # fetch Volta, KernelBench and the corpora; build the bridge
 python3 verify.py                 # re-run every claim here (35/35, ~6 min)
+python3 verify.py --only volta    # or part of it, on a machine that cannot hold the rest
 ```
 
 Almost every number below is produced by a script that `verify.py` re-runs and
