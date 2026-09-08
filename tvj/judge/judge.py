@@ -65,6 +65,15 @@ REF_RANK = {torch.float64: TOP, torch.float32: TOP,
 # orders of magnitude above that, and below this bar we would be charging the
 # kernel for ordinary rounding.
 ACC_GATE_REL = 1e-4
+# The same bar for the VALUE obligation's witness point, and relative for the same
+# reason.  It was absolute (`max|a-b| > 1e-4`), which is the exact measure this
+# project's own headline finding is about: KernelBook row 308 hides a 190 % relative
+# error under `atol=1e-3` because its output is ~1e-4, so an absolute gate would
+# downgrade that FAIL to UNKNOWN for the benchmark's reason.  It cuts the other way
+# too -- at outputs of ~1e8 an absolute 1e-3 is below float32's own spacing and says
+# nothing.  Scaled by the REFERENCE's magnitude, not the kernel's, so a kernel whose
+# answer is garbage of a large magnitude cannot dilute its own error.
+VAL_GATE_REL = 1e-4
 FATAL = ("overflow", "div-by-zero")          # precondition flags that make a result meaningless
 
 class Timeout(Exception): pass
@@ -211,7 +220,12 @@ def witness_tensors(point, cand):
 
 def gpu_confirm(cand, mk_inputs, trials=3, seed=0, dists=("signed", "positive"), probe=None):
     """Run reference and candidate at random parameters AND random inputs, and
-    return the largest disagreement.
+    return the largest disagreement: `(max |a-b|, max |a-b| / max|a|, trials run)`.
+
+    Both, because they answer different questions.  The absolute number is what a
+    reader wants in the record; the relative one is what the gate decides on, since
+    a fixed absolute bar is meaningless at either end of the scale -- see
+    VAL_GATE_REL.
 
     This CORROBORATES a value counterexample; it is not a gate for the other
     obligations -- see the module docstring."""
@@ -220,7 +234,7 @@ def gpu_confirm(cand, mk_inputs, trials=3, seed=0, dists=("signed", "positive"),
         for p in cand.model.parameters():
             if p.numel(): p.copy_((torch.rand(p.shape, generator=g) * 2 - 1).to(p.device, p.dtype))
     cand.push()
-    worst, valid = 0.0, 0
+    worst, rel, valid = 0.0, 0.0, 0
     for dist in dists:
         # some kernels are only defined on positive inputs (anything with a log);
         # compare wherever BOTH sides are finite rather than discarding the run
@@ -234,10 +248,12 @@ def gpu_confirm(cand, mk_inputs, trials=3, seed=0, dists=("signed", "positive"),
                 ok = torch.isfinite(a) & torch.isfinite(b)
                 if not bool(ok.any()): continue
                 valid += 1
-                worst = max(worst, float((a - b).abs()[ok].max()))
+                d = float((a - b).abs()[ok].max())
+                worst = max(worst, d)
+                rel = max(rel, d / max(float(a.abs()[ok].max()), 1e-30))
             except Exception: continue
         if valid: break
-    return (worst if valid else None), valid
+    return (worst if valid else None), (rel if valid else None), valid
 
 
 def diff_symbols(spec, kern):
@@ -351,6 +367,7 @@ def judge(cand, timeout=150, tol_trials=5):
                 g2 = accuracy_gpu((rec.get("accuracy") or {}).get("regime"))
                 rec["gpu_accuracy"] = g2
                 rec["gpu_maxdiff"] = g2 and g2["abs"]
+                rec["gpu_maxrel"] = g2 and g2["rel"]
                 if g2 is None:
                     rec["verdict"] = "UNKNOWN"
                     rec["reason"] = reason + ("; the hardware check at that regime could not run, "
@@ -365,12 +382,12 @@ def judge(cand, timeout=150, tol_trials=5):
                         if g2["rel"] == float("inf") else
                         f"; GPU reproduces at relative {g2['rel']:.3g} in that regime")
             elif gate:
-                worst, _ = gpu_confirm(cand, gate["mk"], probe=probe)
-                rec["gpu_maxdiff"] = worst
-                rec["reason"] = reason + (f"; GPU also shows {worst:.4g}" if worst and worst > 1e-4
+                worst, wrel, _ = gpu_confirm(cand, gate["mk"], probe=probe)
+                rec["gpu_maxdiff"], rec["gpu_maxrel"] = worst, wrel
+                rec["reason"] = reason + (f"; GPU also shows {worst:.4g}" if wrel and wrel > VAL_GATE_REL
                                           else "; hardware is silent here (expected for this obligation)")
             return rec
-        worst = None
+        worst = wrel = None
         if point is not None:
             try:
                 xs = witness_tensors(point, cand)
@@ -378,11 +395,13 @@ def judge(cand, timeout=150, tol_trials=5):
                 with torch.no_grad():
                     a = first(cand.model(*xs)).float(); b = first(cand.run(xs)).float()
                 ok = torch.isfinite(a) & torch.isfinite(b)
-                if bool(ok.any()): worst = float((a - b).abs()[ok].max())
-            except Exception: worst = None
+                if bool(ok.any()):
+                    worst = float((a - b).abs()[ok].max())
+                    wrel = worst / max(float(a.abs()[ok].max()), 1e-30)
+            except Exception: worst = wrel = None
         if worst is None:                       # fall back to random points
-            worst, _ = gpu_confirm(cand, gate["mk"], probe=probe)
-        rec["gpu_maxdiff"] = worst
+            worst, wrel, _ = gpu_confirm(cand, gate["mk"], probe=probe)
+        rec["gpu_maxdiff"], rec["gpu_maxrel"] = worst, wrel
         if worst is None:
             # the gate could not run at all -- every trial raised, or the probe
             # rejected every input.  The contract is that a value FAIL is believed
@@ -390,9 +409,10 @@ def judge(cand, timeout=150, tol_trials=5):
             # no FAIL to report.
             rec["verdict"] = "UNKNOWN"
             rec["reason"] = reason + "; but the hardware check could not run, so this is not corroborated"
-        elif worst <= 1e-4:
+        elif wrel <= VAL_GATE_REL:
             rec["verdict"] = "UNKNOWN"
-            rec["reason"] = f"unreproducible on hardware (GPU max diff {worst:.2g}) -- our modelling gap, not a defect"
+            rec["reason"] = (f"unreproducible on hardware (GPU relative {wrel:.2g}, max diff "
+                             f"{worst:.2g}) -- our modelling gap, not a defect")
         else:
             rec["verdict"] = "FAIL"
             rec["reason"] = reason + f"; GPU reproduces at {worst:.4g}"
