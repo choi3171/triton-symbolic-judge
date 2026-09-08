@@ -50,6 +50,22 @@ def derive(rec):
         out.append(Directive(kind="vary-parameter", targets=params,
             why="the reference reads these; the kernel does not. Their defaults are "
                 "identity elements, so the two agree until the parameters are drawn at random."))
+    elif rec.get("obligation") == "value":
+        # The same directive on weaker evidence.  Keying only on `only_spec` asks the
+        # kernel to IGNORE a parameter, which is the LLM shortcut; a compiler instead
+        # reads every parameter and puts them in the wrong places.  KernelBook row 308
+        # is that: same-shaped tensors swapped between roles, so `assert_size_stride`
+        # is satisfied and both sides read everything -- `only_spec` is empty and no
+        # axis came out, yet redrawing the parameters is the ONLY thing measured to
+        # separate the two.  So when the disagreement rests on parameters at all, say
+        # so.  It costs a redraw the benchmark should be doing anyway: its own loop
+        # builds the model once, which is the blind spot this whole axis exists for.
+        wp = sorted(b for b in (rec.get("witness_point") or {}) if b.startswith(("p_", "b_")))
+        if wp:
+            out.append(Directive(kind="vary-parameter", targets=wp,
+                why="the disagreement rests on these and BOTH sides read them, so nothing "
+                    "is ignored -- but the two arrangements differ, and redrawing separates "
+                    "them. The benchmark builds the model once, so its own loop cannot."))
     if inputs:
         out.append(Directive(kind="vary-input", targets=inputs,
             why="the reference reads these inputs; the kernel does not."))

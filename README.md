@@ -16,12 +16,11 @@ python3 verify.py --only volta    # or part of it, on a machine that cannot hold
 ```
 
 Almost every number below is produced by a script that `verify.py` re-runs and
-matches against the claim. Three groups are not, and say so where they appear:
-the three-stage value split, the Cost table, and the truncation comparison under
-Prior work. Those are read off a corpus run and hand-copied, which is the thing
-the Limits table was made generated to stop; they can become claims once the run
-record they come from is published (`results/kernelbook.jsonl`). A claim that is
-*about the architecture* is tagged `[sm_75]`;
+matches against the claim. Two groups are not, and say so where they appear: the
+Cost table and the truncation comparison under Prior work. Both are hand-copied,
+which is the thing the Limits table was made generated to stop; they can become
+claims when someone writes the script. A claim that is *about the architecture*
+is tagged `[sm_75]`;
 another architecture answering differently is information, not a failure, so
 `verify.py` reads the device it is on and reports those apart from the count. A
 claim that merely needs a GPU is tagged `[gpu]` and is counted everywhere — the
@@ -83,8 +82,7 @@ normalised for associativity and commutativity, so most pairs come out
 *identical* and no solver runs at all: **257 of 272** KernelBook value decisions
 finish there. Volta's exponential-polynomial procedure takes 14 more. Z3 case
 splitting handles piecewise terms — the step Volta's paper says "could be handled
-by case splits" and declines to take — and settles 1. (Read off
-`results/report.txt`, not asserted by `verify.py` — see above.)
+by case splits" and declines to take — and settles 1.
 
 AC does that much of the work because of **delegation**: when both sides hand the
 same operation to the same library call with the same arguments, it becomes one
@@ -176,26 +174,58 @@ kernel with the scale multiply **deleted** passes all four at max difference
 exactly `0` (`tvj/measure/kbv_blindspot.py`). Drawing the parameter at random
 finds it immediately.
 
-**A counterexample yields an axis, not just a point.** The judge reports which
-named buffers a disagreement rests on, so `tvj/judge/testgen.py` turns one
-exploit into a harness directive — *vary these parameters*, *poison this buffer*.
-Derived from a single kernel, two directives catch all 7 of the exploits; the
-corpus' own correctness check catches none of them.
+**A counterexample yields an axis, not just a point — when the kernel leaves
+something out.** The judge reports which named buffers a disagreement rests on,
+so `tvj/judge/testgen.py` turns one exploit into a harness directive — *vary
+these parameters*, *poison this buffer*. Derived from a single kernel, two
+directives catch all 7 of the documented exploits; the corpus' own correctness
+check catches none of them.
+
+Over the 37 FAILs in the two corpora the axis comes out for **26**, and what
+separates them is the shape of the defect rather than the size of the corpus.
+`vary-parameter` and `vary-input` are named by the buffers the *reference* reads
+and the *kernel* does not, so they fire when a kernel omits something — the LLM
+shortcut, where a parameter's default is the identity element of whatever
+consumes it. A compiler does not omit; it reads everything and arranges it
+differently. Row 17 (`leaky_relu(a1)+a2` against `a1+leaky_relu(a2)`) and row 308
+(same-shaped tensors in swapped roles) both read every buffer, so the first rule
+that looked for an omission found nothing on either.
+
+Redrawing the parameters still separates them, because the two *arrangements* of
+the same parameters differ — which is why the rule now fires whenever the
+disagreement rests on parameters at all, not only when one is ignored. Row 308 is
+the measured case: of the five rows whose own benchmark passes them, it is the
+one that only a parameter redraw catches.
+
+Two things that did **not** work are worth the same space. Permuting same-shaped
+inputs looked like the natural axis for the swapped-role defects — of the FAILs
+that yielded no axis under the first rule, 18 have two inputs of one shape and
+the reference is asymmetric in them in all 18 — and it catches nothing the
+un-permuted harness does not already catch, on any of the 18 (hand-run; there is
+no `verify.py` claim for it). And `poison-output`, the axis for a stale-buffer
+read, has never fired on a natural corpus: neither corpus contains a memory FAIL,
+so that class exists here only as the hand-written fixtures in
+`tvj/fixtures/hacks.py`.
+
+The counts above come from `python3 -m tvj.measure.directives`, which reads the
+two published run records.
 
 ### Corpus results
 
 On one criterion — *the corpus' own numeric check passes and the judge still
-FAILs* — there are 12, every one corroborated on hardware before being counted:
+FAILs* — there are 13, every one corroborated on hardware before being counted:
 
 | corpus | judged | tolerance passes, judge FAILs |
 |---|---|---|
-| 400 Inductor-generated (KernelBook) | 76 % | 4 — at the witness point the GPU shows up to 7.3 × 10³ |
+| 400 Inductor-generated (KernelBook) | 76 % | 5 — at the witness point the GPU shows up to 7.3 × 10³ |
 | 156 LLM-generated Triton | 63 % | 8 — 5 on value, 3 on accuracy |
 
-Two more sit just outside that count and are worth naming rather than rounding
-away: KernelBook row 17, where the tolerance verdict is itself random because the
-dataset leaves the parameters uninitialised, and LLM row 35, which the corpus
-labels correct while its own tolerance check disagrees.
+One of the five is in the count only by luck, and says so: KernelBook row 17
+leaves its parameters uninitialised, so the tolerance test compares garbage with
+garbage and its verdict depends on what the allocator left behind — `True` on the
+run these numbers come from and `False` on the one before it. The row is flagged
+`DEGEN` for exactly this. LLM row 35 sits just outside on the other side: the
+corpus labels it correct while its own tolerance check disagrees.
 
 The pattern is the same in all of them: the benchmark's inputs do not reach the
 disagreement.
@@ -215,8 +245,8 @@ disagreement.
   x = 44.4. The GPU is non-finite there and the reference is not.
 
 Across the 304 decided KernelBook rows the tolerance test and the judge **agree
-on 296** — 272 both pass, 24 both fail — **and part company on 8, all in one
-direction**: 4 rows the tolerance test passes and the judge fails, and 4 it
+on 295** — 272 both pass, 23 both fail — **and part company on 9, all in one
+direction**: 5 rows the tolerance test passes and the judge fails, and 4 it
 cannot judge at all, because both sides draw randomness and there is nothing to
 compare; those the judge decides as PASS-ASSUMING. Zero rows fail the tolerance
 test and pass the judge.
@@ -282,8 +312,8 @@ and a 90th percentile of 1.44 s.
 | our caps: the 150 s alarm, 4 GB for Volta, the term budget | 3.8 %      | 3.2 %      | no — raise them on a real machine |
 | our plumbing failed to open the row                        | 0.2 %      | 1.3 %      | no                                |
 | the reference itself is random                             | 0.5 %      | 1.3 %      | no                                |
-| the row hangs the judge and never returns a verdict        | 0.2 %      | —          | no                                |
-| **the method genuinely cannot decide**                     | 2.0 %      | 6.4 %      | —                                 |
+| the row hangs the judge and never returns a verdict        | —          | —          | no                                |
+| **the method genuinely cannot decide**                     | 2.2 %      | 6.4 %      | —                                 |
 
 What matters is not how much is left but **who controls whether a kernel lands
 there**. A reference op we do not model is fixed by the task, so no policy can
@@ -408,7 +438,7 @@ tvj/front/     getting terms out of torch and the GPU   spec  capture  torchtrac
 tvj/judge/     the judge and the corpus runners  judge  kernelbook_run  traces_run  report  testgen
 tvj/fixtures/  kernels and references the checks use    kernels  attn  hacks  sm  probes  mutants
 tvj/checks/    scripts that assert something     check  spec_test  spec_agree  delegate_test  ...
-tvj/measure/   scripts that measure something    difftest  ieee_gap  limits  reward_hack_lit  ...
+tvj/measure/   scripts that measure something    difftest  ieee_gap  limits  directives  reward_hack_lit  ...
 tvj/tools/     open one row and look at it       kb_debug  memcheck  traces_repro
 verify.py      re-runs all of the above and asserts every claim
 ```
