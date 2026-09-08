@@ -249,6 +249,10 @@ def gpu_confirm(cand, mk_inputs, trials=3, seed=0, dists=("signed", "positive"),
                 if not bool(ok.any()): continue
                 valid += 1
                 d = float((a - b).abs()[ok].max())
+                # Two independent maxima: the largest absolute and the largest
+                # relative disagreement can come from DIFFERENT trials, so the two
+                # numbers in the record are each "the worst seen" and dividing one
+                # by the other does not recover a scale.
                 worst = max(worst, d)
                 rel = max(rel, d / max(float(a.abs()[ok].max()), 1e-30))
             except Exception: continue

@@ -2,9 +2,23 @@
 
 Every number quoted in README.md and in the conversation came from one of these
 scripts; this file makes each of them a check that fails loudly if the code,
-Triton, or the hardware no longer produces it.  GPU-dependent claims are tagged
-[sm_75] -- a different architecture is allowed to disagree with them and that
-is itself information, not a failure of the method.
+Triton, or the hardware no longer produces it.
+
+Two tags, and the difference between them is load-bearing:
+
+  [sm_75]  the claim is ABOUT the architecture.  A different one is allowed to
+           disagree, and that is information rather than a failure -- so on
+           another architecture these are printed apart and left out of the
+           count.
+  [gpu]    the claim is about the JUDGE and merely needs a device to run on.
+           Counted everywhere.
+
+They were one tag until an sm_86 run separated them: of the fourteen then tagged
+[sm_75], the nine about the judge all reproduced and only two of the five about
+hardware did not.  Tagging a judge claim [sm_75] means a real regression in it
+shows up as "expected to differ" on any non-Turing machine and the headline count
+still reads clean, which is precisely the silent direction this project exists to
+avoid.
 
     python3 verify.py          # fast set, ~3-4 min
     python3 verify.py --all    # + suite.py, scale to 128, attention L=64
@@ -87,13 +101,13 @@ claim("spec_test.py", "torch-style reference code produces the kernels' terms: m
 claim("capture_test.py", "judging by intercepting real GPU launches: mm_tiled, split-K, flash all recovered and verified",
       [r"mm_tiled via launch\(\).*\n.*Volta 1024/1024  missing 0  mem-errors 0",
        r"mm_splitk via launch\(\).*grid=\(2, 2, 2\).*\n.*Volta 1024/1024  missing 0",
-       r"attn_flash via launch\(\).*\n.*Volta 512/512  missing 0"], tag="sm_75")
+       r"attn_flash via launch\(\).*\n.*Volta 512/512  missing 0"], tag="gpu")
 # The prose says EVERY value FAIL reproduces, so the check is a negative sweep
 # below (no "outputs differ" line without a "GPU reproduces at"), not a single
 # search that one matching row would satisfy.
 claim("kernelbook_run.py", "KernelBook rows 0-40: >=28 PASS all with tol=True; every value FAIL carries a numeric witness the GPU then reproduces",
       [r"'PASS': (2[89]|[34]\d)", r"\(True, 'PASS'\): (2[89]|[34]\d)",
-       r"outputs differ; witness spec=\S+ kernel=\S+; GPU reproduces at"], args=("0", "40"), tag="sm_75")
+       r"outputs differ; witness spec=\S+ kernel=\S+; GPU reproduces at"], args=("0", "40"), tag="gpu")
 
 # Deliberately does NOT pin `tol`.  This row's parameters are uninitialised, so the
 # tolerance test compares garbage with garbage and its verdict depends on whatever
@@ -102,23 +116,23 @@ claim("kernelbook_run.py", "KernelBook rows 0-40: >=28 PASS all with tol=True; e
 claim("kernelbook_run.py", "KernelBook row 17: judge FAILs with a numeric witness the GPU reproduces, where the dataset's own tolerance test is vacuous (uninitialised params, flagged DEGEN)",
       [r"\[ 17\] FAIL\s+tol=\S+\s+DEGEN\s+GatSymAttention\s+\d+ outputs differ; "
        r"witness spec=\S+ kernel=\S+; GPU reproduces at"],
-      args=("--rows", "17"), tag="sm_75")
+      args=("--rows", "17"), tag="gpu")
 
 claim("kb_critic.py", "KernelBook row 308: judge's FAIL attributed exactly -- wrapper permutes same-shaped tensors; tolerance test hides a 190% relative error behind atol",
       [r"cat\(\[W2,state\]\) @ \.\.\. @ action\.T \|  = 0\b", r"relative error 19\d%",
-       r"allclose\(rtol=1e-3, atol=1e-3\) -> True"], tag="sm_75")
+       r"allclose\(rtol=1e-3, atol=1e-3\) -> True"], tag="gpu")
 
 claim("reward_hack_lit.py", "documented reward hacks: Sakana's stale-buffer reuse is caught by the memory obligation where both the tolerance test and its sign-flip mitigation pass",
       [r"matmul: reuse stale output buf\s+Sakana\s+PASS\s+PASS\s+\S+\s+FAIL \(reads unwritten",
        r"ReLU: shape-specialised identity\s+KBV/GPT5\.5\s+PASS\s+fail\s+\S+\s+pass\s+FAIL \(witness",
        r"ReLU: python-level shape check\s+KBV/GPT5\.5\s+PASS\s+fail.*FAIL \(0 kernels launched\)",
-       r"Score on documented hacks: 2 uniquely caught"], tag="sm_75")
+       r"Score on documented hacks: 2 uniquely caught"], tag="gpu")
 claim("reward_hack_lit.py", "unstable variance: equal over the reals (value=pass is CORRECT) and the precondition FAIL is a false positive -- caught only by the accuracy obligation it created",
       [r"variance: E\[X\^2\]-E\[X\]\^2\s+KBV\s+PASS\s+PASS\s+\S+\s+pass\s+pass\s+pass\s+FAIL\[false \+ve\]\s+FAIL \(shift",
        r"CAUGHT BY THE ACCURACY OBLIGATION, and by nothing else here",
        # alternation has to be grouped: unparenthesised, this claim was satisfied by
        # the bare string "REFUSED (Unsupported)" appearing anywhere in the output
-       r"product: early exit on a zero(?:.*\n.*REFUSED|.*REFUSED \(Unsupported\))"], tag="sm_75")
+       r"product: early exit on a zero(?:.*\n.*REFUSED|.*REFUSED \(Unsupported\))"], tag="gpu")
 
 # --- the reference itself ----------------------------------------------------
 # A wrong spec is the one failure mode nothing downstream can catch: it makes a
@@ -145,16 +159,16 @@ claim("undecided.py", "the pairs neither Volta nor Z3 separates are a 5-second b
        r"Mish: both sides carry the threshold\s+256\s+256"])
 claim("kb_blindspot.py", "KernelBench's own correctness loop builds the model once, so a kernel that ignores a parameter whose default is the identity element is bit-identical to the reference",
       [r"KernelBench's own check .*PASSES\s+max diff 0",
-       r"parameters redrawn each trial:\s+FAILS\s+max diff"], tag="sm_75")
+       r"parameters redrawn each trial:\s+FAILS\s+max diff"], tag="gpu")
 claim("harness_fixes.py", "honest counterpoint: how much of this a cheap harness stops on its own, with no symbolic machinery",
       [r"poisoned with NaN before the trial: False -> tolerance test PASSES",
        r"poisoned with NaN before the trial: True  -> tolerance test FAILS",
-       r"the honest kernel still passes under poisoning: True"], tag="sm_75")
+       r"the honest kernel still passes under poisoning: True"], tag="gpu")
 claim("testgen_validate.py", "an axis generalises where a point does not: two directives, each derived from one exploit, catch all 7 -- and the corpus' own check catches none of them",
       [r"7/7 exploits caught by two directives",
        r"-> 4/4 caught by one directive", r"-> 3/3 caught by one directive",
        r"42\s+BiasLayer\s+passes\s+CAUGHT\s+unseen",
-       r"114\s+GatedTanhUnit\s+passes\s+CAUGHT\s+unseen"], tag="sm_75")
+       r"114\s+GatedTanhUnit\s+passes\s+CAUGHT\s+unseen"], tag="gpu")
 # Half the defects a review of this project turns up are not the kind anyone reads
 # their way to -- NaN never interning, `reset()` forgetting two singletons.  This
 # is the standing check for that class: properties over randomly generated terms,
@@ -176,10 +190,10 @@ claim("accuracy_test.py", "the accuracy obligation fires on cancellation and sta
       [r"unstable variance\s+worse\s+worse", r"stable variance \(reverse\)\s+pass\s+pass",
        r"3\*sum vs sum of 3\*x\s+pass\s+pass", r"5/5 accuracy verdicts as expected"])
 
-claim("acc_gate.py", "[sm_75] accuracy is the ONE obligation that is hardware-gated: the cancellation is silent at the benchmark's inputs and loud at the regime it fired in, so a FAIL hardware will not reproduce THERE is downgraded to UNKNOWN",
+claim("acc_gate.py", "accuracy is the ONE obligation that is hardware-gated: the cancellation is silent at the benchmark's inputs and loud at the regime it fired in, so a FAIL hardware will not reproduce THERE is downgraded to UNKNOWN",
       [r"verdict\s+FAIL\s+\(accuracy\)", r"ok: hardware reproduces at relative \S+ > gate",
        r"with the gate raised above what hardware showed", r"verdict\s+UNKNOWN\s+ok",
-       r"accuracy gate holds in both directions"])
+       r"accuracy gate holds in both directions"], tag="gpu")
 
 claim("branch_test.py", "block arguments are bound across a `cf` branch: `^bb1(%5: f32)` declares %5 and no op assigns it, so an unbound argument used to kill the row with a KeyError and report it as ERROR",
       [r"8/8 carried values correct, 1/1 refusal",
@@ -222,11 +236,13 @@ def run(script, args):
 def environment():
     """What this machine is, read rather than assumed.
 
-    The `[sm_75]` tags are claims about Turing.  On another architecture some of
-    them are expected to answer differently -- `dot.precision` says tf32 is
-    a permission the hardware ignores, which is true of sm_75 and false from
-    Ampere on -- and the README's rule is that this is information, not a failure.
-    Acting on that rule requires knowing which architecture the run is on."""
+    The `[sm_75]` tags are claims about Turing -- and only those; a claim that
+    just needs a device is tagged `[gpu]` and is counted everywhere.  On another
+    architecture some of the five are expected to answer differently:
+    `dot.precision` says tf32 is a permission the hardware ignores, which is true
+    of sm_75 and false from Ampere on.  The README's rule is that this is
+    information, not a failure, and acting on it requires knowing which
+    architecture the run is on."""
     code = ("import torch, triton;"
             "cc = torch.cuda.get_device_capability() if torch.cuda.is_available() else None;"
             "print(torch.__version__, triton.__version__, torch.version.cuda,"
@@ -254,9 +270,9 @@ if __name__ == "__main__":
         print(f"  could not read the device ({env['arch']}: {env['name']}).  Every claim below "
               f"is counted\n  as usual -- an unreadable device is not a reason to excuse one.")
     elif other_arch:
-        print(f"  the [sm_75] claims were measured on Turing.  On {env['arch']} one that does "
-              f"not reproduce\n  is printed as [arch] and left out of the count -- see the "
-              f"README on why that is\n  information rather than a failure.")
+        print(f"  the [sm_75] claims are about Turing.  On {env['arch']} one that does not "
+              f"reproduce\n  is printed as [arch] and left out of the count.  [gpu] claims are "
+              f"about the judge\n  and are counted here like any other.")
     print()
     ok_n = 0; total = 0; arch_n = 0
     for script, args, desc, pats, tag, slow in CLAIMS:

@@ -15,10 +15,12 @@ python3 verify.py                 # re-run every claim here (35/35, ~6 min)
 ```
 
 Every number below is produced by a script that `verify.py` re-runs and matches
-against the claim. Claims that depend on the GPU are tagged `[sm_75]`; another
-architecture answering differently is information, not a failure, and `verify.py`
-reads the device it is on so it can report those claims apart from the count
-rather than as failures.
+against the claim. A claim that is *about the architecture* is tagged `[sm_75]`;
+another architecture answering differently is information, not a failure, so
+`verify.py` reads the device it is on and reports those apart from the count. A
+claim that merely needs a GPU is tagged `[gpu]` and is counted everywhere — the
+distinction matters, because tagging a claim about the judge `[sm_75]` would let
+a real regression in it read as "expected to differ".
 
 ## How it works
 
