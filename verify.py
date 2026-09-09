@@ -1,8 +1,8 @@
 """Re-run every experiment behind a claim in this project and assert the claim.
 
-Every number quoted in README.md and in the conversation came from one of these
-scripts; this file makes each of them a check that fails loudly if the code,
-Triton, or the hardware no longer produces it.
+Every number quoted in README.md came from one of these scripts; this file makes
+each of them a check that fails loudly if the code, Triton, or the hardware no
+longer produces it.
 
 Two tags, and the difference between them is load-bearing:
 
@@ -298,6 +298,8 @@ def environment():
 
 
 if __name__ == "__main__":
+    if {"--help", "-h"} & set(sys.argv):
+        print(__doc__); raise SystemExit(0)
     env = environment()
     print(f"  torch {env['torch']}  triton {env['triton']}  cuda {env['cuda']}  "
           f"{env['arch']}  {env['name']}")

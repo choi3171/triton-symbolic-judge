@@ -9,28 +9,17 @@ The motivating question: LLM-generated GPU kernels that pass a tolerance test �
 are they actually correct?
 
 ```
-pip install -r requirements.txt   # torch has to be a CUDA build -- see the file
-./setup.sh                        # fetch Volta, KernelBench and the corpora; build the bridge
-python3 verify.py                 # re-run the claims here (38 of them, ~7 min)
-python3 verify.py --all           # all 41, ~13 min on a T4; one needs VOLTA_MEM_GB=12
-python3 verify.py --only volta    # or part of it, on a machine that cannot hold the rest
-python3 verify.py --failed        # just what failed last time
+pip install -r requirements.txt
+./setup.sh            # fetch Volta, KernelBench and the corpora; build the bridge
+python3 verify.py     # re-run every claim here (--all for the slow three, ~13 min)
 ```
 
-`results/verify.txt` is the log of an `--all` run: 41/41 on a Tesla T4 (sm_75)
-under torch 2.9.1 and Triton 3.5.1.
-
-Almost every number below is produced by a script that `verify.py` re-runs and
-matches against the claim. Two groups are not, and say so where they appear: the
-Cost table and the truncation comparison under Prior work. Both are hand-copied,
-which is the thing the Limits table was made generated to stop; they can become
-claims when someone writes the script. A claim that is *about the architecture*
-is tagged `[sm_75]`;
-another architecture answering differently is information, not a failure, so
-`verify.py` reads the device it is on and reports those apart from the count. A
-claim that merely needs a GPU is tagged `[gpu]` and is counted everywhere — the
-distinction matters, because tagging a claim about the judge `[sm_75]` would let
-a real regression in it read as "expected to differ".
+**Every number below is re-run and matched against its claim**, except two that
+say so where they appear — the Cost table and the truncation comparison under
+Prior work. `results/verify.txt` is a full run: 41/41 on a Tesla T4. Claims about
+the *architecture* are tagged `[sm_75]` and a different one answering differently
+is information rather than a failure; claims that merely need a GPU are `[gpu]`
+and are counted everywhere. `verify.py --help` is its own docstring.
 
 ## How it works
 
@@ -250,17 +239,15 @@ and the *kernel* does not, so they fire when a kernel omits something — the LL
 shortcut, where a parameter's default is the identity element of whatever
 consumes it. A compiler does not omit; it reads everything and arranges it
 differently. Row 17 (`leaky_relu(a1)+a2` against `a1+leaky_relu(a2)`) and row 308
-(same-shaped tensors in swapped roles) both read every buffer, so the first rule
-that looked for an omission found nothing on either.
+(same-shaped tensors in swapped roles) read every buffer, and nothing is missing
+from either side. Redrawing the parameters still separates them, because the two
+*arrangements* of the same parameters differ — so the directive is emitted
+whenever the disagreement rests on parameters at all, not only when one is
+ignored. Row 308 is the measured case: of the five rows whose own benchmark
+passes them, it is the one that only a parameter redraw catches.
 
-Redrawing the parameters still separates them, because the two *arrangements* of
-the same parameters differ — which is why the rule now fires whenever the
-disagreement rests on parameters at all, not only when one is ignored. Row 308 is
-the measured case: of the five rows whose own benchmark passes them, it is the
-one that only a parameter redraw catches.
-
-**A generated check has to be able to see the row it came from.** It inherited
-the harness's comparison — `allclose(atol=1e-2, rtol=1e-2)` — and that has an
+**A generated check has to be able to see the row it came from.** It uses the
+harness's comparison — `allclose(atol=1e-2, rtol=1e-2)` — and that has an
 absolute floor, so at a small reference magnitude it is blind to a disagreement
 the judge found. Three FAILs are in that position, and two of them are rows their
 own benchmark passes. At the corpus' own seeds the absolute comparison misses 13
@@ -273,7 +260,7 @@ when the record says the absolute floor would hide the defect — a directive th
 says how to *measure* rather than what to vary, which is why it does not count
 toward the 26.
 
-Two things that did **not** work are worth the same space. Permuting same-shaped
+Two things did **not** work. Permuting same-shaped
 inputs looked like the natural axis for the swapped-role defects — of the FAILs
 that yielded no axis under the first rule, 18 have two inputs of one shape and
 the reference is asymmetric in them in all 18 — and it catches nothing the
@@ -283,8 +270,7 @@ read, has never fired on a natural corpus: neither corpus contains a memory FAIL
 so that class exists here only as the hand-written fixtures in
 `tvj/fixtures/hacks.py`.
 
-The counts above come from `python3 -m tvj.measure.directives`, which reads the
-two published run records.
+The counts come from `python3 -m tvj.measure.directives`.
 
 ## Cost
 
@@ -395,30 +381,26 @@ coverage as a property of the corpora, not of the method.
 
 **And nothing here has faced an adversary — which is three claims, not one.**
 Every kernel judged was written without knowledge of this judge: Inductor is a
-compiler, and the LLM corpus is a model answering in good faith. Two harder
-positions exist and neither has been taken. Kernels optimised against a
-*different* checker can be had today: Dr. Kernel's policy is published and 3 % of
-its output still hacks past its own check (see Prior work). Training a policy
-against *this* judge is the third, and this repository cannot answer it — that
-claim is about training dynamics, and no amount of judging kernels that already
-exist settles one.
+compiler, and the LLM corpus is a model answering in good faith. Kernels
+optimised against a *different* checker can be had today: Dr. Kernel's policy is
+published and 3 % of its output still hacks past its own check (see Prior work).
+A policy trained against *this* judge is the third, and this repository cannot
+answer it — that claim is about training dynamics, and no amount of judging
+kernels that already exist settles one.
 
-**The second and third also ask different questions, and the cheap one is the
-better one.** As a *rate* — does putting the judge in the loop lower how often
-hacking happens — it is a two-proportion test against a base rate of 2–3 %, which
-Dr. Kernel's numbers and the 13 rows of 556 above independently agree on. At 80 %
-power that is roughly 1,500 judged rollouts per arm to resolve 3 % against 1.5 %,
-in two training runs (arithmetic, not a measurement). It is also the wrong shape:
-hacking is not stationary — near zero until a policy finds the exploit, and not
-after — so a rate averages over the only interesting event.
-
-As an *incident* — when an exploit emerges, does the judge see it, and does the
-directive derived from it close that axis — it is an existence proof and needs
-one. That is the shape the literature reports in, and the shape
-`tvj/checks/testgen_validate.py` already has: seven documented exploits, two
-directives, all seven caught. What is missing there is not sample size. It is
-that all seven were transcribed by hand out of papers, and none of them emerged
-from a policy that was trying.
+**Asked as a rate it is expensive, and probably the wrong question.** "Does
+putting the judge in the loop lower how often hacking happens" is a
+two-proportion test against a base rate of 2–3 % — which Dr. Kernel's numbers and
+the 13 rows of 556 above independently agree on — so roughly 1,500 judged
+rollouts per arm to resolve 3 % against 1.5 %, in two training runs (arithmetic,
+not a measurement). And hacking is not stationary: near zero until a policy finds
+the exploit and not after, so a rate averages over the only interesting event.
+Asked as an incident — when an exploit emerges, does the judge see it, and does
+the directive close that axis — it is an existence proof and needs one. That is
+the shape `tvj/checks/testgen_validate.py` already has: seven exploits, two
+directives, all seven caught. What is missing is not sample size. It is that all
+seven were transcribed by hand out of papers, and none emerged from a policy that
+was trying.
 
 **What a false PASS would look like.** A value FAIL is believed only if the GPU
 reproduces it at the witness point, and an accuracy FAIL only at the regime that
