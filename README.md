@@ -393,10 +393,37 @@ tensor-parallel collectives, MoE routing, paged attention — where symbolic
 addressing and dynamic shapes are normal rather than exceptional. Read the
 coverage as a property of the corpora, not of the method.
 
-**And nothing here has faced an adversary.** Every kernel judged was written
-without knowledge of this judge: Inductor is a compiler, and the LLM corpus is a
-model answering in good faith. What an RL policy would do to it is open, and not
-a question this repository can answer.
+**And nothing here has faced an adversary — which is three claims, not one.**
+Every kernel judged was written without knowledge of this judge: Inductor is a
+compiler, and the LLM corpus is a model answering in good faith. Two harder
+positions exist and neither has been taken. Kernels optimised against a
+*different* checker can be had today — [Dr.
+Kernel](https://arxiv.org/abs/2602.05885)'s policy is published, and the paper
+reports a residual hacking rate of 3 % on KernelBench Level 2 and 1.7 % on Level
+1 with its own check enabled; that check is launch-presence, and the residue is a
+population that survived a real RL loop. Training a policy against *this* judge
+is the third, and this repository cannot answer it — the claim would be about
+training dynamics, and no amount of judging kernels that already exist settles
+one.
+
+**The second and third also ask different questions, and the cheap one is the
+better one.** As a *rate* — does putting the judge in the loop lower how often
+hacking happens — it is a two-proportion test against a base rate of about 2–3 %,
+which the two independent sources here agree on: Dr. Kernel's 3 % and 1.7 %, and
+the 13 rows of 556 whose own benchmark passes them. At 80 % power that needs
+roughly 1,500 judged rollouts per arm to see 3 % become 1.5 %, and 3,800 to see
+it become 2 % (ordinary power arithmetic, not a measurement) — in two training
+runs. It is also the wrong shape: hacking is not stationary, it is near zero
+until a policy finds the exploit and then it is not, so a rate averages over the
+only interesting event.
+
+As an *incident* — when an exploit emerges, does the judge see it, and does the
+directive derived from it close that axis — it is an existence proof and needs
+one. That is the shape the literature reports in, and the shape
+`tvj/checks/testgen_validate.py` already has: seven documented exploits, two
+directives, all seven caught. What is missing there is not sample size. It is
+that all seven were transcribed by hand out of papers, and none of them emerged
+from a policy that was trying.
 
 **What a false PASS would look like.** A value FAIL is believed only if the GPU
 reproduces it at the witness point, and an accuracy FAIL only at the regime that
