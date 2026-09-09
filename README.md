@@ -328,10 +328,11 @@ and a 90th percentile of 1.44 s.
 What matters is not how much is left but **who controls whether a kernel lands
 there**. A reference op we do not model is fixed by the task, so no policy can
 aim at it. A TTIR construct we do not model is a target. On that reading a
-generator could aim at 4.8 % of KernelBook and 12.2 % of the LLM corpus, and it
-is a list of named constructs rather than a region — 17 rows of arithmetic on an
-integer loaded from memory, 3 of transposed convolution, 1 of `scf.while`. The
-rest is unpaid implementation debt with the items written down.
+generator could aim at 19 rows of KernelBook and 19 of the LLM corpus — the same
+count at very different rates, 4.8 % against 12.2 %. And it is a list of named
+constructs rather than a region: 17 rows of arithmetic on an integer loaded from
+memory, 3 of transposed convolution, 1 of `scf.while`. The rest is unpaid
+implementation debt with the items written down.
 
 **The torch tail is the largest steerable bucket in the LLM corpus, and its fix
 is not ours to apply.** These are wrappers that finish the computation in PyTorch
