@@ -179,56 +179,6 @@ kernel with the scale multiply **deleted** passes all four at max difference
 exactly `0` (`tvj/measure/kbv_blindspot.py`). Drawing the parameter at random
 finds it immediately.
 
-**A counterexample yields an axis, not just a point — when the kernel leaves
-something out.** The judge reports which named buffers a disagreement rests on,
-so `tvj/judge/testgen.py` turns one exploit into a harness directive — *vary
-these parameters*, *poison this buffer*. Derived from a single kernel, two
-directives catch all 7 of the documented exploits; the corpus' own correctness
-check catches none of them.
-
-Over the 37 FAILs in the two corpora the axis comes out for **26**, and what
-separates them is the shape of the defect rather than the size of the corpus.
-`vary-parameter` and `vary-input` are named by the buffers the *reference* reads
-and the *kernel* does not, so they fire when a kernel omits something — the LLM
-shortcut, where a parameter's default is the identity element of whatever
-consumes it. A compiler does not omit; it reads everything and arranges it
-differently. Row 17 (`leaky_relu(a1)+a2` against `a1+leaky_relu(a2)`) and row 308
-(same-shaped tensors in swapped roles) both read every buffer, so the first rule
-that looked for an omission found nothing on either.
-
-Redrawing the parameters still separates them, because the two *arrangements* of
-the same parameters differ — which is why the rule now fires whenever the
-disagreement rests on parameters at all, not only when one is ignored. Row 308 is
-the measured case: of the five rows whose own benchmark passes them, it is the
-one that only a parameter redraw catches.
-
-**A generated check has to be able to see the row it came from.** It inherited
-the harness's comparison — `allclose(atol=1e-2, rtol=1e-2)` — and that has an
-absolute floor, so at a small reference magnitude it is blind to a disagreement
-the judge found. Three FAILs are in that position, and two of them are rows their
-own benchmark passes. At the corpus' own seeds the absolute comparison misses 13
-of 15 trials on them; scaled by the reference's magnitude, the same measure the
-hardware gate uses, it catches 15 of 15. It stays silent where it should: on the
-rows the judge PASSes the worst relative error is 4 × 10⁻⁷ against a bar of
-10⁻⁴, so there is about 250× of headroom before ordinary float32 reassociation
-would trip it (`tvj/measure/relcompare.py`). So `compare-relative` is emitted
-when the record says the absolute floor would hide the defect — a directive that
-says how to *measure* rather than what to vary, which is why it does not count
-toward the 26.
-
-Two things that did **not** work are worth the same space. Permuting same-shaped
-inputs looked like the natural axis for the swapped-role defects — of the FAILs
-that yielded no axis under the first rule, 18 have two inputs of one shape and
-the reference is asymmetric in them in all 18 — and it catches nothing the
-un-permuted harness does not already catch, on any of the 18 (hand-run; there is
-no `verify.py` claim for it). And `poison-output`, the axis for a stale-buffer
-read, has never fired on a natural corpus: neither corpus contains a memory FAIL,
-so that class exists here only as the hand-written fixtures in
-`tvj/fixtures/hacks.py`.
-
-The counts above come from `python3 -m tvj.measure.directives`, which reads the
-two published run records.
-
 ### Corpus results
 
 On one criterion — *the corpus' own numeric check passes and the judge still
@@ -280,6 +230,61 @@ stress cancellation, and compares the two *errors*. It rejects the unstable form
 at ~3×10⁵ the reference's error, in a regime where the reference is still
 accurate, while passing legitimate reassociation
 (`tvj/checks/accuracy_test.py`).
+
+## From a counterexample to a test
+
+What the judge hands a harness once it has found something, and what the two
+corpora say about how often that is an axis rather than a point.
+
+**A counterexample yields an axis, not just a point — when the kernel leaves
+something out.** The judge reports which named buffers a disagreement rests on,
+so `tvj/judge/testgen.py` turns one exploit into a harness directive — *vary
+these parameters*, *poison this buffer*. Derived from a single kernel, two
+directives catch all 7 of the documented exploits; the corpus' own correctness
+check catches none of them.
+
+Over the 37 FAILs in the two corpora the axis comes out for **26**, and what
+separates them is the shape of the defect rather than the size of the corpus.
+`vary-parameter` and `vary-input` are named by the buffers the *reference* reads
+and the *kernel* does not, so they fire when a kernel omits something — the LLM
+shortcut, where a parameter's default is the identity element of whatever
+consumes it. A compiler does not omit; it reads everything and arranges it
+differently. Row 17 (`leaky_relu(a1)+a2` against `a1+leaky_relu(a2)`) and row 308
+(same-shaped tensors in swapped roles) both read every buffer, so the first rule
+that looked for an omission found nothing on either.
+
+Redrawing the parameters still separates them, because the two *arrangements* of
+the same parameters differ — which is why the rule now fires whenever the
+disagreement rests on parameters at all, not only when one is ignored. Row 308 is
+the measured case: of the five rows whose own benchmark passes them, it is the
+one that only a parameter redraw catches.
+
+**A generated check has to be able to see the row it came from.** It inherited
+the harness's comparison — `allclose(atol=1e-2, rtol=1e-2)` — and that has an
+absolute floor, so at a small reference magnitude it is blind to a disagreement
+the judge found. Three FAILs are in that position, and two of them are rows their
+own benchmark passes. At the corpus' own seeds the absolute comparison misses 13
+of 15 trials on them; scaled by the reference's magnitude, the same measure the
+hardware gate uses, it catches 15 of 15. It stays silent where it should: on the
+rows the judge PASSes the worst relative error is 4 × 10⁻⁷ against a bar of
+10⁻⁴, so there is about 250× of headroom before ordinary float32 reassociation
+would trip it (`tvj/measure/relcompare.py`). So `compare-relative` is emitted
+when the record says the absolute floor would hide the defect — a directive that
+says how to *measure* rather than what to vary, which is why it does not count
+toward the 26.
+
+Two things that did **not** work are worth the same space. Permuting same-shaped
+inputs looked like the natural axis for the swapped-role defects — of the FAILs
+that yielded no axis under the first rule, 18 have two inputs of one shape and
+the reference is asymmetric in them in all 18 — and it catches nothing the
+un-permuted harness does not already catch, on any of the 18 (hand-run; there is
+no `verify.py` claim for it). And `poison-output`, the axis for a stale-buffer
+read, has never fired on a natural corpus: neither corpus contains a memory FAIL,
+so that class exists here only as the hand-written fixtures in
+`tvj/fixtures/hacks.py`.
+
+The counts above come from `python3 -m tvj.measure.directives`, which reads the
+two published run records.
 
 ## Cost
 
@@ -457,7 +462,7 @@ tvj/front/     getting terms out of torch and the GPU   spec  capture  torchtrac
 tvj/judge/     the judge and the corpus runners  judge  kernelbook_run  traces_run  report  testgen
 tvj/fixtures/  kernels and references the checks use    kernels  attn  hacks  sm  probes  mutants
 tvj/checks/    scripts that assert something     check  spec_test  spec_agree  delegate_test  ...
-tvj/measure/   scripts that measure something    difftest  ieee_gap  limits  directives  reward_hack_lit  ...
+tvj/measure/   scripts that measure something    difftest  ieee_gap  limits  directives  relcompare  ...
 tvj/tools/     open one row and look at it       kb_debug  memcheck  traces_repro
 verify.py      re-runs all of the above and asserts every claim
 ```
