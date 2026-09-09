@@ -276,31 +276,29 @@ The counts come from `python3 -m tvj.measure.directives`.
 
 Hand-measured, not asserted by `verify.py`: `tvj/measure/scale.py` and
 `tvj/checks/volta_attn.py` are the scripts, and only their verdicts are claims.
+Sizes rather than times — a time belongs to whatever machine ran it, and these
+numbers do not.
 
 Attention at D=16, BM=BN=16, comparing three formulations pairwise:
 
-| L | key blocks | outputs | symbolic execution | Volta, ref vs flash | term ops |
-|---:|---:|---:|---:|---:|---:|
-| 32 | 2 | 512 | 0.3–1.8 s | 0.3 s | 3.2 M |
-| 64 | 4 | 1024 | 1.0–2.0 s | 3.6 s | 26.4 M |
-| 128 | 8 | 2048 | 4.4–5.5 s | 33.6 s | 206.8 M |
-| 256 | 16 | 4096 | 18–30 s | see below | 349 M–509 M |
+| L | key blocks | outputs | term ops |
+|---:|---:|---:|---:|
+| 32 | 2 | 512 | 3.2 M |
+| 64 | 4 | 1024 | 26.4 M |
+| 128 | 8 | 2048 | 206.8 M |
+| 256 | 16 | 4096 | 349 M–509 M |
 
-**Memory binds before time.** At L=128 the bridge peaks at 0.56 GB for ref vs
+**The cost of deciding is dominated by the difference in shape between the two
+kernels, not by their size.** At L=128 the bridge peaks at 0.56 GB for ref vs
 safe, 0.77 GB for safe vs flash, and **9.19 GB for ref vs flash** — twelve times
-more for the same problem size. The reason: the naive reference does not subtract
-the max, so its exponential polynomial cannot share the `−m` atom and the cross
-products expand. The practical conclusion is that **the cost of deciding is
-dominated by the difference in shape between the two kernels, not by their
-size** — write the reference max-subtracted and the same comparison fits in
-under a gigabyte.
+more for the same problem. The reason: the naive reference does not subtract the
+max, so its exponential polynomial cannot share the `−m` atom and the cross
+products expand. Write the reference max-subtracted and the same comparison fits
+in under a gigabyte.
 
 At L=256 the well-shaped pairs stay under 4.5 GB in Volta while *our* Python side
 (the term DAG plus JSON serialisation) reaches 7.6 GB, which makes bridge
 serialisation the next bottleneck rather than the decision procedure.
-
-Whole-corpus rows are far smaller: symbolic execution runs at a median of 0.17 s
-and a 90th percentile of 1.44 s.
 
 ## Limits
 
