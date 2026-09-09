@@ -354,6 +354,14 @@ if __name__ == "__main__":
         ok = not missing; ok_n += ok
         print(f"  {'ok  ' if ok else 'FAIL'}  {script:<16} {dt:6.1f}s  {('['+tag+'] ') if tag else ''}{desc}")
         for m in missing: print(f"          missing: /{m}/")
+        if not ok:
+            # What the script actually said.  Without this a crash and a moved
+            # number look the same from here -- a list of regexes that did not
+            # match, and no way to tell which -- and finding out costs a round
+            # trip to whoever ran it.
+            lines = [l for l in out.split("\n") if l.strip()]
+            print(f"          --- last {min(12, len(lines))} lines of its output ---")
+            for l in lines[-12:]: print(f"          | {l[:150]}")
     # Say so when this was a subset.  "15/15 claims reproduce" read on its own is a
     # statement about the whole suite, and under --only it is not one.
     scope = ""

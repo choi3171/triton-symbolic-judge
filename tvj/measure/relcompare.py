@@ -53,7 +53,15 @@ if __name__ == "__main__":
     per_row, lens = [], []
     for i in BLIND:
         r = dict(rows[i]); r["i"] = i
-        signal.alarm(150); cand = build(r); signal.alarm(0)
+        try:
+            signal.alarm(150); cand = build(r); signal.alarm(0)
+        except Exception as e:
+            # A row that will not build under this Triton is not a result about
+            # the comparison.  Say so and carry on; the verdict below counts only
+            # what was measured, and refuses to pass on nothing.
+            signal.alarm(0)
+            print(f"{i:>4} {r['entry_point'][:24]:<24}  could not build: {type(e).__name__}: {str(e)[:40]}")
+            continue
         ts = trials(cand)
         m, c = sum(a for a, _ in ts), sum(b for _, b in ts)
         miss += m; catch += c; tot += len(ts); per_row.append((m, c)); lens.append(len(ts))
@@ -63,7 +71,7 @@ if __name__ == "__main__":
     # asserted is the property: relative sees every trial, absolute is blind on
     # every row.  Pinning the counts is the mistake scale.py was carrying.
     print(f"\n  absolute misses {miss} of {tot} trials; relative catches {catch} of {tot}")
-    every = (all(m > 0 for m, _ in per_row) and
+    every = (bool(per_row) and all(m > 0 for m, _ in per_row) and
              all(c == n for (_, c), n in zip(per_row, lens)))
     print(f"  relative catches every trial and absolute is blind on every row: "
           f"{'ok' if every else 'NO'}")
