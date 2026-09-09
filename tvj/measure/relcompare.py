@@ -14,7 +14,7 @@ that catches everything is worth nothing:
 
     python3 -m tvj.measure.relcompare
 """
-import json, signal, sys
+import json, os, signal, sys
 import torch
 from tvj.judge.kernelbook_run import build
 from tvj.root import at
@@ -42,6 +42,11 @@ def trials(cand, n=5):
 
 
 if __name__ == "__main__":
+    for p in ("data/kernelbook_400.json", "results/kernelbook.jsonl"):
+        if not os.path.exists(at(p)):
+            sys.exit(f"relcompare: {p} is missing.  This measures rows of the KernelBook run, "
+                     f"so without\n  the corpus and its record there is nothing to measure. "
+                     f"`./setup.sh`, and `git restore results/`.")
     rows = json.load(open(at("data/kernelbook_400.json")))
     kb = {}
     for l in open(at("results/kernelbook.jsonl")):

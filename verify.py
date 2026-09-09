@@ -24,6 +24,7 @@ avoid.
     python3 verify.py --all              # + suite.py, scale to 128, attention L=64
     python3 verify.py --only volta       # just the claims whose script name matches
     python3 verify.py --only spec,terms  # comma-separated
+    python3 verify.py --failed           # only what failed last time, and --all with it
 
 `--only` exists because the suite is more than some machines can hold: a full run
 on a 7.7 GB WSL VM exhausted memory and took the Windows host down with it.  It
@@ -43,9 +44,11 @@ and the Triton version rather than of this code (tf32 being ignored, which
 element a reduction drops), and a log that does not say which machine produced it
 cannot be compared with another one.
 """
-import os, re, subprocess, sys, time
+import json, os, re, subprocess, sys, time
 
 ALL = "--all" in sys.argv
+FAILED_AT = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".verify-failed")
+RERUN = "--failed" in sys.argv     # re-run exactly what failed last time
 ONLY = []                      # substrings matched against the script name
 for _i, _a in enumerate(sys.argv):
     if _a == "--only" and _i + 1 < len(sys.argv): ONLY = [s for s in sys.argv[_i + 1].split(",") if s]
@@ -312,6 +315,16 @@ if __name__ == "__main__":
               f"about the judge\n  and are counted here like any other.")
     print()
     selected = [c for c in CLAIMS if not ONLY or any(o in c[0] for o in ONLY)]
+    if RERUN:
+        # A full pass is twenty minutes on a shared machine, and iterating on one
+        # broken claim should not cost that.  Keyed on (script, args), because
+        # three claims run kernelbook_run.py and two run volta_attn.py.
+        try: want = [[w[0], list(w[1])] for w in json.load(open(FAILED_AT))]
+        except Exception: want = []
+        if not want:
+            sys.exit(f"verify: --failed needs a previous run that failed something, and there "
+                     f"is no {os.path.basename(FAILED_AT)} to read.")
+        selected = [c for c in selected if [c[0], list(c[1])] in want]
     if ONLY and not selected:
         # Matching nothing has to be an error.  "0/0 claims reproduce" is a
         # clean-looking summary of having verified nothing.
@@ -319,7 +332,7 @@ if __name__ == "__main__":
                  + "\n  ".join(sorted({c[0] for c in CLAIMS})))
     try: ram = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") / 2**30
     except (ValueError, OSError, AttributeError): ram = 0.0
-    ok_n = 0; total = 0; arch_n = 0
+    ok_n = 0; total = 0; arch_n = 0; failed = []
     for script, args, desc, pats, tag, slow, mem_gb in selected:
         if slow and not ALL:
             print(f"  skip  {script:<16} {desc}  (--all)"); continue
@@ -352,6 +365,7 @@ if __name__ == "__main__":
             continue
         total += 1
         ok = not missing; ok_n += ok
+        if not ok: failed.append([script, list(args)])
         print(f"  {'ok  ' if ok else 'FAIL'}  {script:<16} {dt:6.1f}s  {('['+tag+'] ') if tag else ''}{desc}")
         for m in missing: print(f"          missing: /{m}/")
         if not ok:
@@ -368,6 +382,10 @@ if __name__ == "__main__":
     if ONLY:
         rest = len([c for c in CLAIMS if c not in selected and not (c[5] and not ALL)])
         scope = f"  (--only {','.join(ONLY)}; {rest} other claim(s) not run)"
+    # What to re-run.  Written even when everything passed, so `--failed` after a
+    # clean run says there is nothing rather than repeating the last failure.
+    try: json.dump(failed, open(FAILED_AT, "w"))
+    except OSError: pass
     print(f"\n{ok_n}/{total} claims reproduce{scope}")
     if arch_n:
         print(f"{arch_n} [sm_75] claim(s) not counted: this is {env['arch']}, and another "

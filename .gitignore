@@ -31,3 +31,6 @@ results/archive/
 
 # local virtualenv for running the checks (see requirements.txt)
 .venv/
+
+# which claims failed last time, for `verify.py --failed`
+.verify-failed
