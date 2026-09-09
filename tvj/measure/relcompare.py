@@ -8,8 +8,9 @@ exploit it came from.  `compare-relative` swaps in the measure the judge's own
 hardware gate uses.  This measures both sides of that swap, because a comparison
 that catches everything is worth nothing:
 
-  sensitivity  the three FAILs whose record says absolute cannot see them, run at
-               the corpus' own seeds (`torch.manual_seed(200 + t)`, `torch.rand`)
+  sensitivity  the FAILs whose record says absolute cannot see them -- read from
+               the record, not listed here -- run at the corpus' own seeds
+               (`torch.manual_seed(200 + t)`, `torch.rand`)
   specificity  rows the judge PASSes, where a relative bar must stay silent
 
     python3 -m tvj.measure.relcompare
@@ -17,12 +18,25 @@ that catches everything is worth nothing:
 import json, os, signal, sys
 import torch
 from tvj.judge.kernelbook_run import build
+from tvj.judge.testgen import derive
 from tvj.root import at
 
 ATOL = RTOL = 1e-2          # the harness's comparison
 REL = 1e-4                  # judge.VAL_GATE_REL
-BLIND = [100, 175, 377]     # gpu_maxdiff <= atol + rtol*scale in the record
 CONTROL = 8
+
+
+def blind_rows(kb):
+    """The rows whose record says the absolute comparison cannot see them.
+
+    Read from the run record rather than listed here, and read through
+    `testgen.derive` rather than through a copy of its predicate: a row belongs to
+    this set exactly when `compare-relative` fires on it, so the measurement and
+    the directive it justifies cannot come apart.  It was `[100, 175, 377]` by
+    hand, which is right today and is the drift limits.py was written to stop --
+    a re-judge that moves a row has to move this with it."""
+    return [r["i"] for r in sorted(kb.values(), key=lambda r: r["i"])
+            if r["verdict"] == "FAIL" and any(d.kind == "compare-relative" for d in derive(r))]
 
 
 def trials(cand, n=5):
@@ -52,11 +66,19 @@ if __name__ == "__main__":
     for l in open(at("results/kernelbook.jsonl")):
         r = json.loads(l); kb[r["i"]] = r
 
-    print("sensitivity -- FAILs the absolute comparison is blind to\n")
+    blind = blind_rows(kb)
+    if not blind:
+        sys.exit("relcompare: no row in the record emits `compare-relative`, so there is "
+                 "nothing\n  to measure.  Either the harness's floor no longer hides any FAIL -- "
+                 "which is\n  a result, not a pass -- or the record is not the one this claim "
+                 "was written against.")
+
+    print("sensitivity -- FAILs the absolute comparison is blind to")
+    print(f"  rows {blind}, read from the record: `compare-relative` fires on these\n")
     print(f"{'row':>4} {'name':<24} {'absolute misses':>16} {'relative catches':>17}")
     miss = catch = tot = 0
     per_row, lens = [], []
-    for i in BLIND:
+    for i in blind:
         r = dict(rows[i]); r["i"] = i
         try:
             signal.alarm(150); cand = build(r); signal.alarm(0)
