@@ -23,6 +23,11 @@ from tvj.core.sexec import RANK, RANK_NAME, TOP
 
 from tvj.root import at
 OUT = at("results", "reward_hacking.txt")
+# `results/` is where the artifacts live, and a script that writes one should not
+# assume somebody else made the directory: `open(path, "w")` raises
+# FileNotFoundError on a missing parent, which reads as the script failing rather
+# than as the tree being incomplete.
+os.makedirs(at("results"), exist_ok=True)
 BUDGET = 200_000_000          # Volta term-op budget; unbudgeted calls are what OOM'd us
 
 def emit(line):
