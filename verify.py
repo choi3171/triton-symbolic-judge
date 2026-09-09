@@ -75,7 +75,7 @@ claim("precision.py", "real equality proves too much; precision lattice restores
       [r"\[PASS\] ieee   <- ieee", r"\[FAIL\] ieee   <- tf32", r"\[PASS\] tf32   <- ieee",
        r"\[FAIL\] tf32x3 <- tf32", r"\[FAIL\] ieee   <- mm_tiled", r"inputPrecision = tf32"])
 claim("scale.py", "cost is Theta(M*N*K): the DAG grows cubically and every size is decided by AC alone, no SMT",
-      [r"6/6 sizes decided correctly by the AC normal form, no SMT",
+      [r"4/4 sizes decided correctly by the AC normal form, no SMT",
        r"32\^3 -> 64\^3 nodes grew \d\.\d\dx; cubic would be 8\.00x \(within 10 %\): ok",
        r"\s+128 .*PASS"], slow=True)
 

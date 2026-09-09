@@ -4,8 +4,13 @@ A tiled matmul is denoted densely: every output element is a sum of K products,
 so the DAG is Theta(M*N*K) nodes and nothing is handed to a solver -- the AC
 normal form settles it by identity.  This measures that growth.
 
-    python3 -m tvj.measure.scale           # 32 .. 256
-    python3 -m tvj.measure.scale 32 64     # just these, for a small machine
+    python3 -m tvj.measure.scale           # 32 .. 128, which is what is claimed
+    python3 -m tvj.measure.scale 32 64     # fewer, for a small machine
+    python3 -m tvj.measure.scale 192 256   # further out, if the machine holds it
+
+The default stops at 128.  Going further is a cost demonstration nothing asserts,
+and it cost the claim: at 256^3 the pool is ~17 M terms, and on a machine that
+cannot hold that the script dies before its verdict prints.
 
 The absolute node counts are NOT asserted, only the growth.  They are a property
 of the TTIR the installed Triton emits, not of this project: the same kernel
@@ -21,7 +26,7 @@ from tvj.core import sexec as X
 from tvj.fixtures import kernels as Kr
 from tvj.checks.check import to_ttir, B, spec_matmul
 
-SIZES = [int(a) for a in sys.argv[1:] if a.isdigit()] or [32, 64, 96, 128, 192, 256]
+SIZES = [int(a) for a in sys.argv[1:] if a.isdigit()] or [32, 64, 96, 128]
 
 print(f"{'M=N=K':>7} {'grid':>9} {'outputs':>9} {'terms/out':>9} {'DAG nodes':>10} "
       f"{'vs 32^3':>8} {'exec s':>8} {'spec s':>8} {'cmp s':>7} {'verdict':>8}")
@@ -44,15 +49,16 @@ for S in SIZES:
     if base is None: base = n
     rows.append((S, n, ok))
     print(f"{S:>7} {str(g):>9} {S*S:>9} {S:>9} {n:>10} {n/base:>7.2f}x "
-          f"{t1-t0:>8.2f} {t2-t1:>8.2f} {t3-t2:>7.3f} {'PASS' if ok else 'FAIL':>8}")
+          f"{t1-t0:>8.2f} {t2-t1:>8.2f} {t3-t2:>7.3f} {'PASS' if ok else 'FAIL':>8}", flush=True)
+    # As soon as it is known, not at the end.  A verdict that only prints after
+    # every size has completed is a verdict the largest size can take away.
+    if len(rows) == 2:
+        (s0, n0, _), (s1, n1, _) = rows
+        got, cubic = n1 / n0, (s1 / s0) ** 3
+        print(f"\n{s0}^3 -> {s1}^3 nodes grew {got:.2f}x; cubic would be {cubic:.2f}x "
+              f"(within 10 %): {'ok' if abs(got-cubic)/cubic <= 0.10 else 'NO'}\n", flush=True)
 
 print()
 bad = [S for S, _, ok in rows if not ok]
 print(f"{len(rows) - len(bad)}/{len(rows)} sizes decided correctly by the AC normal form, no SMT"
       + (f" -- WRONG at {bad}" if bad else ""))
-if len(rows) > 1:
-    (s0, n0, _), (s1, n1, _) = rows[0], rows[1]
-    got, cubic = n1 / n0, (s1 / s0) ** 3
-    ok = abs(got - cubic) / cubic <= 0.10
-    print(f"{s0}^3 -> {s1}^3 nodes grew {got:.2f}x; cubic would be {cubic:.2f}x "
-          f"(within 10 %): {'ok' if ok else 'NO'}")
