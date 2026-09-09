@@ -20,8 +20,8 @@ shows up as "expected to differ" on any non-Turing machine and the headline coun
 still reads clean, which is precisely the silent direction this project exists to
 avoid.
 
-    python3 verify.py                    # fast set, ~3-4 min
-    python3 verify.py --all              # + suite.py, scale to 128, attention L=64
+    python3 verify.py                    # the fast set
+    python3 verify.py --all              # + suite.py, scale to 128, attention at L=128
     python3 verify.py --only volta       # just the claims whose script name matches
     python3 verify.py --only spec,terms  # comma-separated
     python3 verify.py --failed           # only what failed last time, and --all with it
@@ -319,14 +319,18 @@ if __name__ == "__main__":
     print()
     selected = [c for c in CLAIMS if not ONLY or any(o in c[0] for o in ONLY)]
     if RERUN:
-        # A full pass is twenty minutes on a shared machine, and iterating on one
-        # broken claim should not cost that.  Keyed on (script, args), because
-        # three claims run kernelbook_run.py and two run volta_attn.py.
+        # Iterating on one broken claim should not cost a full pass.  Keyed on
+        # (script, args), because three claims run kernelbook_run.py and two run
+        # volta_attn.py.
         try: want = [[w[0], list(w[1])] for w in json.load(open(FAILED_AT))]
-        except Exception: want = []
+        except Exception: want = None
+        # Empty and absent are different answers, and the file is written even on a
+        # clean run precisely so the first one can be given.
+        if want is None:
+            sys.exit(f"verify: --failed re-runs what the last run recorded, and there is no "
+                     f"{os.path.basename(FAILED_AT)} to read.  Run it once first.")
         if not want:
-            sys.exit(f"verify: --failed needs a previous run that failed something, and there "
-                     f"is no {os.path.basename(FAILED_AT)} to read.")
+            sys.exit("verify: the last run failed nothing, so --failed has nothing to re-run.")
         selected = [c for c in selected if [c[0], list(c[1])] in want]
     if ONLY and not selected:
         # Matching nothing has to be an error.  "0/0 claims reproduce" is a
