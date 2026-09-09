@@ -11,10 +11,14 @@ are they actually correct?
 ```
 pip install -r requirements.txt   # torch has to be a CUDA build -- see the file
 ./setup.sh                        # fetch Volta, KernelBench and the corpora; build the bridge
-python3 verify.py                 # re-run every claim here (35/35, ~6 min)
+python3 verify.py                 # re-run the claims here (38 of them, ~7 min)
+python3 verify.py --all           # all 41, ~13 min on a T4; one needs VOLTA_MEM_GB=12
 python3 verify.py --only volta    # or part of it, on a machine that cannot hold the rest
-python3 verify.py --all           # + three slow claims; one needs ~12 GB and skips itself below that
+python3 verify.py --failed        # just what failed last time
 ```
+
+`results/verify.txt` is the log of an `--all` run: 41/41 on a Tesla T4 (sm_75)
+under torch 2.9.1 and Triton 3.5.1.
 
 Almost every number below is produced by a script that `verify.py` re-runs and
 matches against the claim. Two groups are not, and say so where they appear: the
