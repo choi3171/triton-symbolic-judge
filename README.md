@@ -11,7 +11,7 @@ are they actually correct?
 ```
 pip install -r requirements.txt
 ./setup.sh            # fetch Volta, KernelBench and the corpora; build the bridge
-python3 verify.py     # re-run every claim here (--all for the slow three, ~13 min)
+python3 verify.py     # re-run every claim here; --all adds the slow three
 ```
 
 **Every number below is re-run and matched against its claim**, except two that
