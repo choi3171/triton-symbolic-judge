@@ -28,7 +28,14 @@ avoid.
 `--only` exists because the suite is more than some machines can hold: a full run
 on a 7.7 GB WSL VM exhausted memory and took the Windows host down with it.  It
 does not lift the `--all` gate -- a claim marked slow stays skipped, and those are
-the memory-hungry ones.  `VOLTA_MEM_GB` (default 4) is the other knob.
+the memory-hungry ones.
+
+A claim that needs Volta given more than the 4 GB default declares it (`mem_gb`),
+and on a machine that cannot hold it the claim is SKIPPED rather than run and
+failed: attention at L=128 peaks at 9.19 GB for ref-vs-flash, and under the
+default it dies on the cap in a minute and reads like a regression.  The three
+`--all` claims had never been run before this was written, which is how that went
+unnoticed.
 
 The run opens by reading the machine -- torch, Triton, CUDA and the compute
 capability -- because some of what is claimed here is a property of the device
@@ -43,10 +50,15 @@ ONLY = []                      # substrings matched against the script name
 for _i, _a in enumerate(sys.argv):
     if _a == "--only" and _i + 1 < len(sys.argv): ONLY = [s for s in sys.argv[_i + 1].split(",") if s]
     elif _a.startswith("--only="): ONLY = [s for s in _a.split("=", 1)[1].split(",") if s]
-CLAIMS = []   # (script, args, description, list of regexes that must all match, tag)
+CLAIMS = []   # (script, args, description, regexes that must all match, tag, slow, mem_gb)
 
-def claim(script, desc, patterns, args=(), tag="", slow=False):
-    CLAIMS.append((script, tuple(args), desc, patterns, tag, slow))
+def claim(script, desc, patterns, args=(), tag="", slow=False, mem_gb=0):
+    """`mem_gb` is what the claim needs Volta to be allowed, in GB.  A claim that
+    needs more than the machine has is reported as skipped rather than failed:
+    attention at L=128 peaks at 9.19 GB for ref-vs-flash (see the Cost section of
+    the README), and under the 4 GB default it dies on the cap in a minute and
+    looks like a regression."""
+    CLAIMS.append((script, tuple(args), desc, patterns, tag, slow, mem_gb))
 
 # --- refinement checker ------------------------------------------------------
 claim("check.py", "10/10 hand-picked verdicts (3 correct kernels pass, bugs fail)",
@@ -62,8 +74,10 @@ claim("overflow.py", "i32 index arithmetic wraps: verdict flips to OOB at offset
 claim("precision.py", "real equality proves too much; precision lattice restores direction",
       [r"\[PASS\] ieee   <- ieee", r"\[FAIL\] ieee   <- tf32", r"\[PASS\] tf32   <- ieee",
        r"\[FAIL\] tf32x3 <- tf32", r"\[FAIL\] ieee   <- mm_tiled", r"inputPrecision = tf32"])
-claim("scale.py", "cost is Theta(M*N*K): DAG nodes 32^3 -> 64^3 grow ~8x, no SMT",
-      [r"\s+32 .*\s35841\s", r"\s+64 .*\s278529\s", r"\s+128 .*\s2195457\s.*PASS"], slow=True)
+claim("scale.py", "cost is Theta(M*N*K): the DAG grows cubically and every size is decided by AC alone, no SMT",
+      [r"6/6 sizes decided correctly by the AC normal form, no SMT",
+       r"32\^3 -> 64\^3 nodes grew \d\.\d\dx; cubic would be 8\.00x \(within 10 %\): ok",
+       r"\s+128 .*PASS"], slow=True)
 
 # --- semantics vs hardware ---------------------------------------------------
 claim("difftest.py", "int.width wraps on hardware; masked load reads 0.0 with no `other` operand",
@@ -97,7 +111,7 @@ claim("volta_attn.py", "attention ref/safe/flash pairwise 512/512 equal at L=32"
 claim("volta_attn.py", "attention at L=64 (4 key blocks): 1024/1024",
       [r"ref\s+vs flash: .*Volta: 1024 true, 0 false, 0 error"], args=("64",))
 claim("volta_attn.py", "attention at L=128 (8 key blocks): 2048/2048",
-      [r"ref\s+vs flash: .*Volta: 2048 true, 0 false, 0 error"], args=("128",), slow=True)
+      [r"ref\s+vs flash: .*Volta: 2048 true, 0 false, 0 error"], args=("128",), slow=True, mem_gb=12)
 claim("volta_neg.py", "buggy flash (no rescale) rejected: 512 false",
       [r"Volta 0 true, 512 false, 0 error"])
 claim("checksm.py", "softmax: AC normal form fails (0/8), Volta decides (8/8)",
@@ -241,7 +255,7 @@ for _root, _dirs, _files in os.walk("tvj"):
             MODULE[_f] = os.path.join(_root, _f)[:-3].replace(os.sep, ".")
 
 
-def run(script, args):
+def run(script, args, mem_gb=0):
     t0 = time.time()
     target = ["-m", MODULE[script]] if script in MODULE else [script]
     # Reproducing a claim must not write to the corpus record.  `kernelbook_run 0 40`
@@ -249,6 +263,7 @@ def run(script, args):
     # one file and the later one won -- row 17 reported a different tolerance verdict
     # depending on which had run last.
     env = dict(os.environ, TVJ_NO_RECORD="1")
+    if mem_gb: env["VOLTA_MEM_GB"] = str(mem_gb)
     p = subprocess.run([sys.executable, "-u", *target, *args], capture_output=True,
                        text=True, timeout=3600, env=env)
     out = p.stdout + p.stderr
@@ -302,11 +317,19 @@ if __name__ == "__main__":
         # clean-looking summary of having verified nothing.
         sys.exit(f"verify: --only {','.join(ONLY)} matched no claim.  The script names are:\n  "
                  + "\n  ".join(sorted({c[0] for c in CLAIMS})))
+    try: ram = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") / 2**30
+    except (ValueError, OSError, AttributeError): ram = 0.0
     ok_n = 0; total = 0; arch_n = 0
-    for script, args, desc, pats, tag, slow in selected:
+    for script, args, desc, pats, tag, slow, mem_gb in selected:
         if slow and not ALL:
             print(f"  skip  {script:<16} {desc}  (--all)"); continue
-        out, dt = run(script, args)
+        if mem_gb and ram and ram < mem_gb + 2:
+            # Not counted either way.  Running it under a cap it cannot fit in
+            # produces a failure that says nothing about the code.
+            print(f"  skip  {script:<16} needs VOLTA_MEM_GB={mem_gb} and this machine has "
+                  f"{ram:.1f} GB of RAM: {desc}")
+            continue
+        out, dt = run(script, args, mem_gb)
         missing = [p for p in pats if not re.search(p, out)]
         if script == "kernelbook_run.py" and args == ("0", "40"):
             # Every value FAIL must carry hardware corroboration, not just one of
