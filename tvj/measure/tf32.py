@@ -33,6 +33,12 @@ has_tf32 = cc >= (8, 0)
 print(f"  device: {torch.cuda.get_device_name(0)} (sm_{cc[0]}{cc[1]}, "
       f"{'HAS TF32 tensor cores' if has_tf32 else 'no TF32 tensor cores'})")
 print(f"  expected max error if tf32 were honoured (10-bit mantissa): ~1e-3")
+# What the claim is about is whether the permission was EXERCISED, not the size of
+# the ieee error, which belongs to the device.  A tf32 error within a small factor
+# of the ieee one means the option was ignored; honouring it costs two orders.
+_i = np.abs(outs["ieee"]-f64).max(); _t = np.abs(outs["tf32"]-f64).max()
+print(f"  tf32 error is {_t/max(_i,1e-30):.3g}x the ieee error -- the permission was "
+      f"{'IGNORED' if _t <= 10*_i else 'exercised'}")
 if has_tf32:
     print("  NOTE: this is Ampere or later, where tf32 is honoured rather than ignored.\n"
           "  The decision `dot.precision` in semantics.py was measured on sm_75 and\n"

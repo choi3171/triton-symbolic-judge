@@ -93,10 +93,10 @@ claim("layout2.py", "reduce order is layout- and version-dependent: num_warps in
        r"num_warps=8  sizePerThread= 1   sum =  125\.0   lost 1 of the 1\.0s",
        r"num_warps=1  sizePerThread= 4   sum =  12[35]\.0   lost [13] of the 1\.0s"], tag="sm_75")
 claim("tf32.py", "input_precision=tf32 is a permission: ignored on sm_75, bitwise equal to ieee",
-      [r"ieee and tf32 bitwise identical on this GPU\? True", r"input_precision=tf32\s+max\|gpu-float64\| = 8\.557e-06"],
-      tag="sm_75")
+      [r"ieee and tf32 bitwise identical on this GPU\? True",
+       r"the permission was IGNORED"], tag="sm_75")
 claim("difftest_mm.py", "whole-kernel: semantics and GPU are equally far from float64",
-      [r"max \|semantics - float64\|\s+3\.545e-06", r"max \|gpu\s+- float64\|\s+3\.545e-06"], tag="sm_75")
+      [r"semantics and GPU equally far from float64 \(within 5 %\): ok"], tag="sm_75")
 claim("semantics.py", "23 decisions, none open",
       [r"23 semantic decisions over 26 core ops", r"\[open\]\s+0", r"\[measured\]\s+5"])
 

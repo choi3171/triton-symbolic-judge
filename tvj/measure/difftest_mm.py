@@ -34,6 +34,12 @@ print(f"  elements differing            {int((mine != gpu).sum())} / {M*N}")
 print(f"  max |semantics - gpu|         {np.abs(mine-gpu).max():.3e}")
 print(f"  max |semantics - float64|     {np.abs(mine-f64).max():.3e}")
 print(f"  max |gpu       - float64|     {np.abs(gpu-f64).max():.3e}")
+# The claim is that the two are EQUALLY far, not that either is a particular
+# number: the distance is a property of the accumulation order the hardware chose
+# and moves with the architecture.  Assert the equality, print the values.
+_s, _g = np.abs(mine-f64).max(), np.abs(gpu-f64).max()
+_same = abs(float(_s) - float(_g)) <= 0.05 * max(float(_s), float(_g), 1e-30)
+print(f"  semantics and GPU equally far from float64 (within 5 %): {'ok' if _same else 'NO'}")
 print(f"\n  -> both are valid float32 evaluations of the same real-number expression;")
 print(f"     they differ because dot.accum-order is unspecified. The refinement")
 print(f"     checker is unaffected (it works over the reals); an IEEE layer would")
