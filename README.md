@@ -14,8 +14,11 @@ pip install -r requirements.txt
 python3 verify.py     # re-run every claim here; --all adds the slow three
 ```
 
-**Every number below is re-run and matched against its claim**, except two that
-say so where they appear — the Cost table and the truncation comparison under
+**Every number below comes from a script `verify.py` re-runs**, and the claim it
+checks is either the number itself or — where the last digits belong to the
+hardware — the property that number has to have. Three results are hand-run
+instead and say so where they appear: the Cost table, the permutation result
+under *From a counterexample to a test*, and the truncation comparison under
 Prior work. `results/verify.txt` is a full run: 41/41 on a Tesla T4. Claims about
 the *architecture* are tagged `[sm_75]` and a different one answering differently
 is information rather than a failure; claims that merely need a GPU are `[gpu]`
