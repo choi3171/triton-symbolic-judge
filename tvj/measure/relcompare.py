@@ -50,14 +50,23 @@ if __name__ == "__main__":
     print("sensitivity -- FAILs the absolute comparison is blind to\n")
     print(f"{'row':>4} {'name':<24} {'absolute misses':>16} {'relative catches':>17}")
     miss = catch = tot = 0
+    per_row, lens = [], []
     for i in BLIND:
         r = dict(rows[i]); r["i"] = i
         signal.alarm(150); cand = build(r); signal.alarm(0)
         ts = trials(cand)
         m, c = sum(a for a, _ in ts), sum(b for _, b in ts)
-        miss += m; catch += c; tot += len(ts)
+        miss += m; catch += c; tot += len(ts); per_row.append((m, c)); lens.append(len(ts))
         print(f"{i:>4} {r['entry_point'][:24]:<24} {f'{m}/{len(ts)} trials':>16} {f'{c}/{len(ts)} trials':>17}")
+    # The counts move with the hardware -- a different reduction order changes the
+    # last digits and can move a borderline trial across the bound -- so what is
+    # asserted is the property: relative sees every trial, absolute is blind on
+    # every row.  Pinning the counts is the mistake scale.py was carrying.
     print(f"\n  absolute misses {miss} of {tot} trials; relative catches {catch} of {tot}")
+    every = (all(m > 0 for m, _ in per_row) and
+             all(c == n for (_, c), n in zip(per_row, lens)))
+    print(f"  relative catches every trial and absolute is blind on every row: "
+          f"{'ok' if every else 'NO'}")
 
     print("\nspecificity -- rows the judge PASSes, where it must stay silent\n")
     ctrl = [i for i, v in sorted(kb.items()) if v["verdict"] == "PASS" and v.get("tol") is True][:CONTROL]
@@ -80,5 +89,9 @@ if __name__ == "__main__":
                 w = max(w, float((a[ok] - b[ok]).abs().max()) / max(float(a[ok].abs().max()), 1e-30))
         worst_all = max(worst_all, w); fired += w > REL
         print(f"{i:>4} {r['entry_point'][:24]:<24}  relative {w:.3g}")
-    print(f"\n  {fired} of {len(ctrl)} PASS rows would fire; worst relative error {worst_all:.3g} "
-          f"against a bar of {REL:g}")
+    margin = REL / worst_all if worst_all else float("inf")
+    print(f"\n  {fired} of {len(ctrl)} PASS rows would fire; worst relative error {worst_all:.3g}, "
+          f"{margin:.0f}x below the {REL:g} bar" if worst_all else
+          f"\n  {fired} of {len(ctrl)} PASS rows would fire; no PASS row disagrees at all")
+    print(f"  silent on every PASS row with at least 10x of margin: "
+          f"{'ok' if fired == 0 and margin >= 10 else 'NO'}")

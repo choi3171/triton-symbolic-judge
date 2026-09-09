@@ -184,10 +184,10 @@ claim("directives.py", "a counterexample yields an axis for 26 of the 37 FAILs, 
       [r"37 FAILs over both corpora", r"KernelBook\s+an axis for 18 of 28",
        r"LLM traces\s+an axis for 8 of 9", r"both\s+an axis for 26 of 37",
        r"poison-output\s+0\s+<- never on a natural corpus"])
-claim("relcompare.py", "a generated check has to see the row it came from: the harness's absolute tolerance misses 13 of 15 trials on the three FAILs it is blind to, the relative one catches 15 of 15, and it fires on none of the PASS rows",
-      [r"100 Focal_loss\s+5/5 trials\s+5/5 trials", r"175 FocalLossBinary\s+5/5 trials\s+5/5 trials",
-       r"absolute misses 13 of 15 trials; relative catches 15 of 15",
-       r"0 of 8 PASS rows would fire; worst relative error 3\.98e-07"], tag="gpu")
+claim("relcompare.py", "a generated check has to see the row it came from: the relative comparison catches every trial where the harness's absolute one is blind, and stays silent on every PASS row",
+      [r"relative catches every trial and absolute is blind on every row: ok",
+       r"silent on every PASS row with at least 10x of margin: ok",
+       r"0 of \d+ PASS rows would fire"], tag="gpu")
 claim("op_coverage.py", "the corpora's 556 reference modules use 130 distinct ops in forward; 50 cover three quarters of them",
       [r"556 reference modules, 130 distinct ops", r"\s+50\s+413\s+74\.3%"])
 claim("undecided.py", "the pairs neither Volta nor Z3 separates are a 5-second budget, not a gap between the two procedures",
