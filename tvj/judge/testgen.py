@@ -121,6 +121,11 @@ corroboration : {gpu}
 {why}
 """
 import torch
+
+
+def _first(o):
+    """The output tensor, for a module that returns more than one."""
+    return o[0] if isinstance(o, (tuple, list)) else o
 '''
 
 def emit(rec, directives=None):
@@ -154,10 +159,9 @@ def emit(rec, directives=None):
             body.append("        # Hand the allocator's free list back dirty, so a skipped")
             body.append("        # computation cannot pass by finding the right answer lying there.")
             body.append("        with torch.no_grad():")
-            body.append("            _ = reference(*make_inputs(g))")
-            body.append("            _dirty = [torch.full_like(_ if torch.is_tensor(_) else _[0],")
-            body.append("                                      float('nan')) for _ in range(4)]")
-            body.append("            del _dirty")
+            body.append("            _ref = _first(reference(*make_inputs(g)))")
+            body.append("            _dirty = [torch.full_like(_ref, float('nan')) for _ in range(4)]")
+            body.append("            del _dirty, _ref")
     body.append("        xs = make_inputs(g)")
     for d in directives:
         if d.kind == "stress-regime":
@@ -166,7 +170,7 @@ def emit(rec, directives=None):
             body.append(f"        xs = [(x + {d['shift']!r}) if torch.is_tensor(x) and x.is_floating_point()")
             body.append("              else x for x in xs]")
     body.append("        with torch.no_grad():")
-    body.append("            a, b = reference(*xs), candidate(*xs)")
+    body.append("            a, b = _first(reference(*xs)), _first(candidate(*xs))")
     body.append("        a, b = a.float(), b.float()")
     body.append("        if bool(((~torch.isfinite(b)) & torch.isfinite(a)).any()): return False")
     body.append("        ok = torch.isfinite(a) & torch.isfinite(b)")

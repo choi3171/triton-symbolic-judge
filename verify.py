@@ -203,8 +203,9 @@ claim("harness_fixes.py", "honest counterpoint: how much of this a cheap harness
       [r"poisoned with NaN before the trial: False -> tolerance test PASSES",
        r"poisoned with NaN before the trial: True  -> tolerance test FAILS",
        r"the honest kernel still passes under poisoning: True"], tag="gpu")
-claim("testgen_validate.py", "an axis generalises where a point does not: two directives, each derived from one exploit, catch all 7 -- and the corpus' own check catches none of them",
-      [r"7/7 exploits caught by two directives",
+claim("testgen_validate.py", "an axis generalises where a point does not: two directives, each derived from one exploit, catch all 7 -- and the corpus' own check catches none of them; and the source `emit` writes for every directive kind runs",
+      [r"4/4 emitted checks run",
+       r"7/7 exploits caught by two directives",
        r"-> 4/4 caught by one directive", r"-> 3/3 caught by one directive",
        r"42\s+BiasLayer\s+passes\s+CAUGHT\s+unseen",
        r"114\s+GatedTanhUnit\s+passes\s+CAUGHT\s+unseen"], tag="gpu")
