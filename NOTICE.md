@@ -4,7 +4,7 @@ This project depends on, but does not vendor, the following. `setup.sh` fetches 
 
 | Component | License | How it is used |
 |---|---|---|
-| [Volta](https://github.com/willtunnels/volta) (Driscoll, Dubey, Wei, Kayal, Sharma, Aiken) | MIT | Only `volta_analysis::canon::Session::check_equivalent` and the `ExprArena` term type. The PTX frontend is never invoked. |
+| [Volta](https://github.com/willtunnels/volta) (Driscoll, Dubey, Wei, Kayal, Sharma, Aiken; [arXiv:2511.12638](https://arxiv.org/abs/2511.12638)) | MIT | Only `volta_analysis::canon::Session::check_equivalent` and the `ExprArena` term type. The PTX frontend is never invoked. |
 | [Triton](https://github.com/triton-lang/triton) | MIT | Compiles kernels to TTIR, which this project reads. |
 | [KernelBench](https://github.com/ScalingIntelligence/KernelBench) | MIT | Benchmark problems, read for the harness blind-spot demonstration. |
 | [GPUMODE/KernelBook](https://huggingface.co/datasets/GPUMODE/KernelBook) | see dataset card | Corpus of (PyTorch, Inductor-Triton) pairs. |

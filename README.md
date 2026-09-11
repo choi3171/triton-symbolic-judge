@@ -78,8 +78,9 @@ Value is decided in three stages, cheapest first. Terms are hash-consed and
 normalised for associativity and commutativity, so most pairs come out
 *identical* and no solver runs at all: **257 of 272** KernelBook value decisions
 finish there. Volta's exponential-polynomial procedure takes 14 more. Z3 case
-splitting handles piecewise terms — the step Volta's paper says "could be handled
-by case splits" and declines to take — and settles 1.
+splitting handles piecewise terms — the step [Volta's
+paper](https://arxiv.org/abs/2511.12638) says "could be handled by case splits"
+and declines to take — and settles 1.
 
 AC does that much of the work because of **delegation**: when both sides hand the
 same operation to the same library call with the same arguments, it becomes one
@@ -349,6 +350,12 @@ canonicalising two differently-shaped kernels. The Cost section measures what
 that is worth: holding the reference fixed, one correct kernel decides in 0.56 GB
 and another in 9.19 GB, and the expensive one is the *faster* one. Three more
 rows sat within 0.01 % of our own term budget, 8,000,260 against 8,000,000.
+Volta's paper expects none of this. Canonicalisation "may cause exponential
+blowup", it says, but "since machine learning workloads do not typically have
+computations with high multiplicative depth, this blowup does not happen in
+practice". On these two corpora it happens 13 times in 556 rows — which is a
+measured counterexample to the assumption our own decision procedure rests on,
+not only a complaint about our caps.
 
 The number is not the reason; the representation is. A term graph is proportional
 to the **work a kernel does rather than to the program that does it** — a tiled
