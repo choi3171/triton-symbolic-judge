@@ -89,10 +89,13 @@ if __name__ == "__main__":
     print(f"  an order of magnitude between two CORRECT kernels against the same reference: "
           f"{'ok' if hi/lo >= SPREAD else 'NO'}")
 
-    # Derived, not chosen: the smallest whole-GB cap that still holds the cheap pair.
-    # Volta's cap is read as an integer number of gigabytes, so there is no finer one.
-    cap = max(1, math.ceil(lo))
-    if cap >= hi:
+    # Derived, not chosen: the LARGEST whole-GB cap that still stops the dearest
+    # pair.  Volta reads its cap as a whole number of gigabytes, so there is no
+    # finer one -- and taking the largest rather than the smallest gives the cheap
+    # pairs the most room, so a pair that peaked just under an integer does not
+    # fail here for want of a few megabytes and read as the demonstration failing.
+    cap = max(1, math.ceil(hi) - 1)
+    if cap >= hi or cap < lo:
         sys.exit(f"\nsteerable: no whole-GB cap separates {lo:.2f} GB from {hi:.2f} GB at L={L}.\n"
                  f"  The spread is real but too narrow to demonstrate with an integer cap --\n"
                  f"  run at a larger L, where it widens: `python3 -m tvj.measure.steerable {L*2}`.")

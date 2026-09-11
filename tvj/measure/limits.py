@@ -57,10 +57,24 @@ def which_cap(rec):
     if "GB cap" in r: return "Volta's address-space cap, on the pair"
     if "Budget {" in r: return "Volta's term-operation budget, on the pair"
     if v == "TOO-LARGE" or "term budget" in r: return "our own term budget"
-    return "other"
+    if "too large to hand to Volta" in r: return "our own cap on nodes over the wire"
+    return "some other cap"          # visible rather than lumped, if one is ever added
 
 
 HANG = "the row hangs the judge and never returns a verdict"
+
+def bucket_of(rec):
+    """Which row of the table this record lands in, or None if it was decided.
+
+    The single place that decision is made.  The caps breakdown at the bottom reads
+    rows through this too, so it cannot end up describing a different set of rows
+    than the table above it counts."""
+    v, r = rec["verdict"], _r(rec)
+    if v in DECIDED: return None
+    for label, _, pred in BUCKETS:
+        if pred(v, r): return label
+    return RESIDUE[0]
+
 
 def classify(recs, total=None):
     out = collections.Counter()
@@ -69,11 +83,8 @@ def classify(recs, total=None):
     # other number -- KernelBook row 372 is exactly this.
     if total is not None and len(recs) < total: out[HANG] = total - len(recs)
     for rec in recs:
-        v, r = rec["verdict"], _r(rec)
-        if v in DECIDED: continue
-        for label, _, pred in BUCKETS:
-            if pred(v, r): out[label] += 1; break
-        else: out[RESIDUE[0]] += 1
+        lab = bucket_of(rec)
+        if lab: out[lab] += 1
     return out
 
 
@@ -141,19 +152,14 @@ if __name__ == "__main__":
               f"{100*c.get(RESIDUE[0],0)/total:.1f} % ({c.get(RESIDUE[0],0)}/{total}).")
 
     print("\nthe caps bucket, by which cap")
+    capped = [x for _, recs, _, _ in data for x in recs if bucket_of(x) == CAPS]
     for t, recs, total, _ in data:
-        by = collections.Counter(which_cap(x) for x in recs
-                                 if x["verdict"] not in DECIDED
-                                 and next((lab for lab, _, pr in BUCKETS if pr(x["verdict"], _r(x))), None) == CAPS)
+        by = collections.Counter(which_cap(x) for x in recs if bucket_of(x) == CAPS)
         if by:
             print(f"  {t}:")
             for k, n in by.most_common(): print(f"    {n:3}  {k}")
-    pair = sum(n for t, recs, total, _ in data
-               for x in recs if x["verdict"] not in DECIDED
-               and next((lab for lab, _, pr in BUCKETS if pr(x["verdict"], _r(x))), None) == CAPS
-               and "on the pair" in which_cap(x) for n in [1])
-    caps_n = sum(c.get(CAPS, 0) for _, _, _, c in data)
-    print(f"  {pair} of {caps_n} are a cap on the PAIR of terms, not on the row: the cost of "
+    pair = sum(1 for x in capped if "on the pair" in which_cap(x))
+    print(f"  {pair} of {len(capped)} are a cap on the PAIR of terms, not on the row: the cost of "
           f"deciding\n  is the difference in shape between the two sides, and a generator writes "
           f"one of them.")
 
