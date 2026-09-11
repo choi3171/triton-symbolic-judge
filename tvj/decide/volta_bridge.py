@@ -154,6 +154,13 @@ def equivalent(pairs, budget=None):
         tail = p.stderr.decode("utf-8", "replace")[-400:]
         if "memory allocation" in tail or "Cannot allocate" in tail or p.returncode == -9:
             raise Unsupported(f"Volta exceeded its {env['VOLTA_MEM_GB']} GB cap on this pair")
+        if "bad input json" in tail or "not a tvj bridge stream" in tail or "wire version" in tail:
+            # The binary predates the binary wire format (or postdates this checkout).
+            # Worth naming: otherwise the first sign is a JSON parse error from a
+            # process that is no longer sent any JSON.
+            raise RuntimeError("volta_bridge is built from a different wire version than this "
+                               "checkout speaks.\n  Rebuild it: `cd bridge && cargo build "
+                               f"--release` (or ./setup.sh).\n  It said: {tail}")
         raise RuntimeError(f"volta_bridge failed: {tail}")
     out = json.loads(p.stdout.decode("utf-8"))
     res = [True if r == "true" else False if r == "false" else r for r in out["results"]]

@@ -39,7 +39,15 @@ for a, b in PAIRS:
     A, Bs = stores[a], stores[b]
     ac = sum(A[k] is Bs[k] for k in keys)
     t0 = time.time()
-    res, st = V.equivalent([(A[k], Bs[k]) for k in keys])
+    try:
+        res, st = V.equivalent([(A[k], Bs[k]) for k in keys])
+    except V.Unsupported as e:
+        # A pair too big for the cap is a RESULT -- it is what tvj/measure/steerable.py
+        # is about -- and it used to come out of here as an exception that killed the
+        # run before the remaining pairs were tried.
+        print(f"  {a:<5} vs {b:<5}: AC-equal {ac}/{len(keys)}   UNDECIDED: {e}"
+              f"   [{time.time()-t0:.1f}s, python peak {py_rss()/1024:.2f} GB]")
+        continue
     n_true = sum(r is True for r in res)
     n_false = sum(r is False for r in res)
     errs = [r for r in res if isinstance(r, str)]

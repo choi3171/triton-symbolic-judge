@@ -191,6 +191,10 @@ claim("relcompare.py", "a generated check has to see the row it came from: the r
       [r"relative catches every trial and absolute is blind on every row: ok",
        r"silent on every PASS row with at least 10x of margin: ok",
        r"0 of \d+ PASS rows would fire"], tag="gpu")
+claim("steerable.py", "our own cost is an axis: three formulations of attention are pairwise equal over the reals, the dearest pair costs an order of magnitude more to decide than the cheapest, and at a cap between them the judge decides two correct kernels and returns UNDECIDED on the third",
+      [r"an order of magnitude between two CORRECT kernels against the same reference: ok",
+       r"at one cap the judge decides \d+ of these correct kernels and not \d+: ok",
+       r"what moved is the shape of the kernel, not the reference and not the cap: ok"], mem_gb=3)
 claim("op_coverage.py", "the corpora's 556 reference modules use 130 distinct ops in forward; 50 cover three quarters of them",
       [r"556 reference modules, 130 distinct ops", r"\s+50\s+413\s+74\.3%"])
 claim("undecided.py", "the pairs neither Volta nor Z3 separates are a 5-second budget, not a gap between the two procedures",

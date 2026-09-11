@@ -212,6 +212,13 @@ def _f32(x):
 # dozen extern calls did 12.8 GB).  The Volta bridge has an address-space cap;
 # this is the same guard on our side, turning an OOM that takes the session with
 # it into one row reported as too large.
+#
+# Why eight million: an interned term costs a measured ~400 bytes -- the object,
+# its argument tuple, and its entry in the hash-consing table, which is most of it
+# -- so this is about 3 GB of Python objects.  The number is a property of the
+# machine the judge runs on, not of the method, and `TVJ_TERM_BUDGET` raises it.
+# What it does NOT do is stop a kernel being shaped so that canonicalising it is
+# expensive: see tvj/measure/steerable.py, and the Limits section of the README.
 TERM_BUDGET = int(__import__("os").environ.get("TVJ_TERM_BUDGET", 8_000_000))
 
 class TermBudget(Exception): pass

@@ -351,7 +351,12 @@ rows died on a cap that applies to the *pair* of term graphs rather than to the
 row — Volta's address space, or its term-operation budget, both reached while
 canonicalising two differently-shaped kernels. The Cost section measures what
 that is worth: holding the reference fixed, one correct kernel decides in 0.56 GB
-and another in 9.19 GB, and the expensive one is the *faster* one. Three more
+and another in 9.19 GB, and the expensive one is the *faster* one.
+`tvj/measure/steerable.py` is that as a demonstration rather than an argument: the
+three formulations are pairwise equal over the reals, the dearest pair costs ten
+times the cheapest to decide, and at a cap between them the judge decides two of
+the three correct kernels and returns UNDECIDED on the third. The reference did
+not change and neither did the cap — only the shape of the kernel. Three more
 rows sat within 0.01 % of our own term budget, 8,000,260 against 8,000,000.
 Volta's paper expects none of this. Canonicalisation "may cause exponential
 blowup", it says, but "since machine learning workloads do not typically have
