@@ -2,13 +2,14 @@
 # Fetch the third-party pieces this project reads but does not vendor.
 set -e
 cd "$(dirname "$0")"
+. ./_python.sh
 
 # Preflight.  Everything below assumes torch, triton, numpy, z3 and datasets are
 # importable and that cargo is on PATH.  Without this the first sign of a missing
 # dependency is a traceback out of a HuggingFace loader, two git clones and
 # several minutes in, and the README's two-line quickstart never said to install
 # anything at all.
-python3 - <<'CHECK'
+"$PY" - <<'CHECK'
 import importlib.util, sys
 need = [("torch", "torch"), ("triton", "triton"), ("numpy", "numpy"),
         ("z3", "z3-solver"), ("datasets", "datasets")]
@@ -50,7 +51,7 @@ mkdir -p data
 [ -d data/KernelBench ] || git clone --depth 1 \
   https://github.com/ScalingIntelligence/KernelBench.git data/KernelBench
 
-python3 - <<'PY'
+"$PY" - <<'PY'
 import json, itertools, os
 from datasets import load_dataset
 if not os.path.exists("data/kernelbook_400.json"):

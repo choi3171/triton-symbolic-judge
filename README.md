@@ -14,6 +14,11 @@ pip install -r requirements.txt
 python3 verify.py     # re-run every claim here; --all adds the slow three
 ```
 
+The shell scripts find the interpreter rather than assume `python3`, and
+`PYTHON=/path/to/python` overrides them — a conda notebook can have only
+`python`, and a shell that re-reads its profile can lose the PATH the notebook
+process had.
+
 **Every number below comes from a script `verify.py` re-runs**, and the claim it
 checks is either the number itself or — where the last digits belong to the
 hardware — the property that number has to have. Three results are hand-run
