@@ -82,7 +82,9 @@ def build(r):
                      param_source=model_new, meta=rec)
 
 
-def judge_row(r, timeout=150):
+ROW_TIMEOUT = int(os.environ.get("TVJ_ROW_TIMEOUT", 150))   # see judge.BUDGET
+
+def judge_row(r, timeout=None):
     base = {"name": r["entry_point"], "repo": r["repo_name"], "i": r.get("i", 0)}
     signal.alarm(60)                       # building the candidate must not hang either
     try:
@@ -92,7 +94,7 @@ def judge_row(r, timeout=150):
     except Exception as e:
         return dict(base, verdict="ERROR", reason=f"{type(e).__name__}: {str(e)[:120]}")
     finally: signal.alarm(0)
-    return judge(cand, timeout=timeout)
+    return judge(cand, timeout=timeout or ROW_TIMEOUT)
 
 
 if __name__ == "__main__":

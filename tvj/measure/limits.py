@@ -12,7 +12,7 @@ so no policy can aim at it.  A TTIR construct we do not model is a target.
 
     python3 -m tvj.measure.limits [--md]
 """
-import collections, json, os, sys
+import collections, json, math, os, sys
 from tvj.root import at
 
 DECIDED = ("PASS", "FAIL", "PASS-ASSUMING")
@@ -158,6 +158,28 @@ if __name__ == "__main__":
         if by:
             print(f"  {t}:")
             for k, n in by.most_common(): print(f"    {n:3}  {k}")
+    # Is the bucket NEUTRAL -- rows we happened not to reach -- or is it enriched in
+    # rows that were going to disagree?  The corpus records its own tolerance verdict
+    # for every row, so this is a question with an answer rather than a worry.  A
+    # kernel that is wrong AND expensive to canonicalise is reported UNKNOWN, not
+    # FAIL, which is the silent direction; if that were happening we would expect
+    # exactly this signal.
+    for t, recs, _, _ in data:
+        cf = [x for x in recs if bucket_of(x) == CAPS and x.get("tol") is False]
+        ct = [x for x in recs if bucket_of(x) == CAPS and x.get("tol") is True]
+        df = [x for x in recs if x["verdict"] in DECIDED and x.get("tol") is False]
+        dn = [x for x in recs if x["verdict"] in DECIDED and x.get("tol") is not None]
+        if not (cf or ct) or not dn: continue
+        a, b, c, d = len(cf), len(ct), len(df), len(dn) - len(df)
+        n = a + b + c + d
+        pv = sum(math.comb(a + b, x) * math.comb(c + d, a + c - x) / math.comb(n, a + c)
+                 for x in range(a, min(a + b, a + c) + 1))
+        r1, r2 = a / (a + b), c / max(dn and len(dn), 1)
+        print(f"  {t}: {a} of {a+b} capped rows fail the corpus' own tolerance test "
+              f"({100*r1:.0f} %), against {c} of {len(dn)} decided ({100*r2:.1f} %)"
+              + (f" -- {r1/r2:.1f}x, Fisher p={pv:.3f}" if r2 else "")
+              + (f"; rows {[x['i'] for x in cf]}" if cf else ""))
+
     pair = sum(1 for x in capped if "on the pair" in which_cap(x))
     print(f"  {pair} of {len(capped)} are a cap on the PAIR of terms, not on the row: the cost of "
           f"deciding\n  is the difference in shape between the two sides, and a generator writes "

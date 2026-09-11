@@ -149,7 +149,9 @@ def build(r):
                      meta=rec), None
 
 
-def judge_row(r, timeout=120):
+ROW_TIMEOUT = int(os.environ.get("TVJ_ROW_TIMEOUT", 120))   # see judge.BUDGET
+
+def judge_row(r, timeout=None):
     base = {"key": r["sample_key"], "label": bool(r["result_correctness"])}
     signal.alarm(60)                       # building the candidate must not hang either
     try:
@@ -159,7 +161,7 @@ def judge_row(r, timeout=120):
     except Exception as e:
         return dict(base, verdict="ERROR", reason=f"{type(e).__name__}: {str(e)[:80]}")
     finally: signal.alarm(0)
-    return bucket if cand is None else judge(cand, timeout=timeout)
+    return bucket if cand is None else judge(cand, timeout=timeout or ROW_TIMEOUT)
 
 
 if __name__ == "__main__":

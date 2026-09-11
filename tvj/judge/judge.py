@@ -29,7 +29,7 @@ ignored on sm_75, a narrowed validity radius shows only at extreme inputs), so
 gating them would discard exactly the defects a test cannot reach, which is the
 whole reason the judge exists.
 """
-import collections, copy, inspect, signal, time, traceback, torch
+import collections, copy, inspect, os, signal, time, traceback, torch
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -48,7 +48,13 @@ from tvj.core.sexec import Unsupported, TermBudget, RANK, TOP
 try: from tvj.core.sexec import RANK_NAME as INV
 except ImportError: INV = {v: k for k, v in RANK.items()}
 
-BUDGET = 200_000_000
+# Volta's term-operation budget for one pair, and the row alarm below it, are OURS
+# rather than the method's -- the Limits section says so, and says a generator can
+# steer a kernel into them.  Both are knobs so that claim can be tested rather than
+# asserted: raise them on a machine with the memory and the rows the caps were
+# holding come back with a verdict.  Six of the fifteen KernelBook rows that hit one
+# fail their own tolerance test, which is why it is worth knowing what they say.
+BUDGET = int(os.environ.get("TVJ_VOLTA_BUDGET", 200_000_000))
 # Ops whose OUTPUT IS the random draw, so lifting it to an input role is sound.
 # The distinction matters: `native_dropout` returns (result, mask) and the mask is
 # boolean, so a naive "take the float outputs" would pick up the RESULT and hand
