@@ -351,7 +351,7 @@ removes the bucket entirely — and that is not a concession, because a torch ta
 also costs a launch and a materialised intermediate. The constraint that makes a
 kernel analysable is the one that makes it fast.
 
-**Our caps are steerable, and raising them is not the answer.** 13 of those 20
+**Our caps are steerable.** 13 of those 20
 rows died on a cap that applies to the *pair* of term graphs rather than to the
 row — Volta's address space, or its term-operation budget, both reached while
 canonicalising two differently-shaped kernels. The Cost section measures what
@@ -370,11 +370,28 @@ practice". On these two corpora it happens 13 times in 556 rows — which is a
 measured counterexample to the assumption our own decision procedure rests on,
 not only a complaint about our caps.
 
+**And the bucket is not neutral.** 6 of the 15 KernelBook rows that hit one of
+our caps fail the corpus' own tolerance test, against 23 of the 300 decided rows
+— 5.2 times the rate, Fisher p = 0.001. Raise the caps (`TVJ_ROW_TIMEOUT=1800`,
+`VOLTA_MEM_GB=24`, `TVJ_VOLTA_BUDGET=4e9`) and four of the six decide, every one a
+FAIL the GPU reproduces at the witness point: rows 137, 194, 196 and 233, by 1.8,
+0.25, 1.2 and 0.43. The caps were not holding rows nobody had got to. They were
+holding defects.
+
+The two that do not come back are the two blocked inside Volta rather than by a
+cap of ours, and 24 GB is not enough for either. One is row 61, where reading the
+generated wrapper settles it without the judge at all: `Attention.forward(self,
+k, q)` takes k first, and the wrapper hands `w_k` the second input and `w_q` the
+first — both `(4, 4, 1, 4)`, so `assert_size_stride` is satisfied. The GPU
+disagrees by 0.26, deterministically. It is a defect we can name, in a corpus we
+published, that this method cannot reach.
+
 The number is not the reason; the representation is. A term graph is proportional
 to the **work a kernel does rather than to the program that does it** — a tiled
 matmul is Θ(M·N·K) nodes because every output element is denoted as a sum of K
-products — so "make it bigger" is always available, and raising a cap moves the
-threshold without changing what the threshold is a function of. Most of this
+products — so "make it bigger" is always available. Raising a cap is worth doing,
+and the four rows above are what it buys; what it does not do is change what the
+threshold is a function of, which is why the axis survives every raise. Most of this
 section is that one fact in other clothes: shapes are fixed because the grid is
 enumerated, integers are concrete because that is what makes the memory check a
 dictionary lookup, and a branch on a loaded value is refused because there is
