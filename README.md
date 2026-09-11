@@ -313,27 +313,27 @@ serialisation the next bottleneck rather than the decision procedure.
      judge" instead. -->
 
 **Judged coverage.** 76 % of 400 Inductor-generated rows, 63 % of 156 LLM-written rows.
-
-|                                                            | KernelBook | LLM traces | can a generator steer into it?    |
-|------------------------------------------------------------|------------|------------|-----------------------------------|
-| the reference uses a torch op we do not model              | 12.5 %     | 3.2 %      | no — the task is given            |
-| the kernel uses a TTIR construct we do not model           | 4.5 %      | 1.9 %      | **yes**                           |
-| a torch tail after the kernels we could not replay         | 0.2 %      | 10.3 %     | yes, and see below                |
-| the candidate does not compile or run at all               | —          | 9.6 %      | no                                |
-| our caps: the 150 s alarm, 4 GB for Volta, the term budget | 3.8 %      | 3.2 %      | no — raise them on a real machine |
-| our plumbing failed to open the row                        | 0.2 %      | 1.3 %      | no                                |
-| the reference itself is random                             | 0.5 %      | 1.3 %      | no                                |
-| the row hangs the judge and never returns a verdict        | —          | —          | no                                |
-| **the method genuinely cannot decide**                     | 2.2 %      | 6.4 %      | —                                 |
+|                                                            | KernelBook | LLM traces | can a generator steer into it? |
+|------------------------------------------------------------|------------|------------|--------------------------------|
+| the reference uses a torch op we do not model              | 12.5 %     | 3.2 %      | no — the task is given         |
+| the kernel uses a TTIR construct we do not model           | 4.5 %      | 1.9 %      | **yes**                        |
+| a torch tail after the kernels we could not replay         | 0.2 %      | 10.3 %     | yes, and see below             |
+| the candidate does not compile or run at all               | —          | 9.6 %      | no                             |
+| our caps: the 150 s alarm, 4 GB for Volta, the term budget | 3.8 %      | 3.2 %      | **yes**, and see below         |
+| our plumbing failed to open the row                        | 0.2 %      | 1.3 %      | no                             |
+| the reference itself is random                             | 0.5 %      | 1.3 %      | no                             |
+| the row hangs the judge and never returns a verdict        | —          | —          | no                             |
+| **the method genuinely cannot decide**                     | 2.2 %      | 6.4 %      | —                              |
 
 What matters is not how much is left but **who controls whether a kernel lands
 there**. A reference op we do not model is fixed by the task, so no policy can
-aim at it. A TTIR construct we do not model is a target. On that reading a
-generator could aim at 19 rows of KernelBook and 19 of the LLM corpus — the same
-count at very different rates, 4.8 % against 12.2 %. And it is a list of named
-constructs rather than a region: 17 rows of arithmetic on an integer loaded from
-memory, 3 of transposed convolution, 1 of `scf.while`. The rest is unpaid
-implementation debt with the items written down.
+aim at it. A TTIR construct we do not model is a target, and so is our own cost:
+on that reading a generator could aim at 34 rows of KernelBook and 24 of the LLM
+corpus, 8.5 % against 15.4 %. The two are not the same kind of target, though.
+The TTIR bucket is a list of named constructs — 17 rows of arithmetic on an
+integer loaded from memory, 3 of transposed convolution, 1 of `scf.while` — and
+it shrinks as they are implemented. The caps bucket is a region, and it is the
+paragraph after next.
 
 **The torch tail is the largest steerable bucket in the LLM corpus, and its fix
 is not ours to apply.** These are wrappers that finish the computation in PyTorch
@@ -341,6 +341,30 @@ after the kernels. Requiring generation to emit a single fused Triton kernel
 removes the bucket entirely — and that is not a concession, because a torch tail
 also costs a launch and a materialised intermediate. The constraint that makes a
 kernel analysable is the one that makes it fast.
+
+**Our caps are steerable, and raising them is not the answer.** 13 of those 20
+rows died on a cap that applies to the *pair* of term graphs rather than to the
+row — Volta's address space, or its term-operation budget, both reached while
+canonicalising two differently-shaped kernels. The Cost section measures what
+that is worth: holding the reference fixed, one correct kernel decides in 0.56 GB
+and another in 9.19 GB, and the expensive one is the *faster* one. Three more
+rows sat within 0.01 % of our own term budget, 8,000,260 against 8,000,000.
+
+The number is not the reason; the representation is. A term graph is proportional
+to the **work a kernel does rather than to the program that does it** — a tiled
+matmul is Θ(M·N·K) nodes because every output element is denoted as a sum of K
+products — so "make it bigger" is always available, and raising a cap moves the
+threshold without changing what the threshold is a function of. Most of this
+section is that one fact in other clothes: shapes are fixed because the grid is
+enumerated, integers are concrete because that is what makes the memory check a
+dictionary lookup, and a branch on a loaded value is refused because there is
+nothing symbolic to split. It is a trade rather than a mistake — the same
+unrolling is why AC decides 257 of 272 value questions with no solver call, since
+everything is ground. But a row over a cap is reported UNKNOWN rather than FAIL,
+so a kernel that is wrong *and* expensive to canonicalise is not judged wrong;
+and unlike the TTIR bucket, this one needs no unusual operation at all. No
+policy has been observed trying — that is the third claim under the adversary
+heading below.
 
 **What the method actually cannot do.** A loaded value used as an *address*. The
 memory model maps concrete offsets to terms, so a symbolic index has no slot.

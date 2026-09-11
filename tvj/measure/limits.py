@@ -36,7 +36,7 @@ BUCKETS = [
      lambda v, r: v == "UNKNOWN" and ("after the kernels" in r or "we do not intercept" in r)),
     ("the candidate does not compile or run at all", "no",
      lambda v, r: v in ("KERNEL-BROKEN", "NO-ENTRY")),
-    ("our caps: the 150 s alarm, 4 GB for Volta, the term budget", "no — raise them on a real machine",
+    ("our caps: the 150 s alarm, 4 GB for Volta, the term budget", "**yes**, and see below",
      lambda v, r: v in ("TIMEOUT", "TOO-LARGE") or
                   (v == "UNKNOWN" and any(k in r for k in ("Budget", "exceeded its", "too large", "term budget")))),
     ("our plumbing failed to open the row", "no",
@@ -45,6 +45,19 @@ BUCKETS = [
      lambda v, r: v == "NONDETERMINISTIC"),
 ]
 RESIDUE = ("**the method genuinely cannot decide**", "—")
+
+CAPS = "our caps: the 150 s alarm, 4 GB for Volta, the term budget"
+
+# Which cap, for the rows in that bucket.  The split is the argument: a cap on the
+# PAIR is one a generator can move by choosing a shape, where the wall-clock alarm
+# is not obviously one.
+def which_cap(rec):
+    v, r = rec["verdict"], _r(rec)
+    if v == "TIMEOUT": return "the 150 s alarm"
+    if "GB cap" in r: return "Volta's address-space cap, on the pair"
+    if "Budget {" in r: return "Volta's term-operation budget, on the pair"
+    if v == "TOO-LARGE" or "term budget" in r: return "our own term budget"
+    return "other"
 
 
 HANG = "the row hangs the judge and never returns a verdict"
@@ -126,6 +139,23 @@ if __name__ == "__main__":
         print(f"{t}: a generator could steer into {100*steerable/total:.1f} % of rows "
               f"({steerable}/{total}); the method's own wall is "
               f"{100*c.get(RESIDUE[0],0)/total:.1f} % ({c.get(RESIDUE[0],0)}/{total}).")
+
+    print("\nthe caps bucket, by which cap")
+    for t, recs, total, _ in data:
+        by = collections.Counter(which_cap(x) for x in recs
+                                 if x["verdict"] not in DECIDED
+                                 and next((lab for lab, _, pr in BUCKETS if pr(x["verdict"], _r(x))), None) == CAPS)
+        if by:
+            print(f"  {t}:")
+            for k, n in by.most_common(): print(f"    {n:3}  {k}")
+    pair = sum(n for t, recs, total, _ in data
+               for x in recs if x["verdict"] not in DECIDED
+               and next((lab for lab, _, pr in BUCKETS if pr(x["verdict"], _r(x))), None) == CAPS
+               and "on the pair" in which_cap(x) for n in [1])
+    caps_n = sum(c.get(CAPS, 0) for _, _, _, c in data)
+    print(f"  {pair} of {caps_n} are a cap on the PAIR of terms, not on the row: the cost of "
+          f"deciding\n  is the difference in shape between the two sides, and a generator writes "
+          f"one of them.")
 
     print("\nthe named constructs behind the steerable buckets")
     for t, recs, total, _ in data:
