@@ -104,8 +104,8 @@ claim("semantics.py", "23 decisions, none open",
       [r"23 semantic decisions over 26 core ops", r"\[open\]\s+0", r"\[measured\]\s+5"])
 
 # --- Volta decision procedure ------------------------------------------------
-claim("volta_check.py", "Volta bridge: 7/7 identities; softmax naive==safe 16/16 and 128/128",
-      [r"(\s*ok .*\n){7}", r"ROWS=2 N=8: AC-equal 0/16,\s+Volta-equal 16/16",
+claim("volta_check.py", "Volta bridge: 18/18 identities, covering every operation code the wire carries; softmax naive==safe 16/16 and 128/128",
+      [r"(\s*ok .*\n){18}", r"ROWS=2 N=8: AC-equal 0/16,\s+Volta-equal 16/16",
        r"ROWS=4 N=32: AC-equal 0/128,\s+Volta-equal 128/128"])
 claim("volta_attn.py", "attention ref/safe/flash pairwise 512/512 equal at L=32",
       [r"ref\s+vs safe\s*: AC-equal 0/512\s+Volta: 512 true, 0 false, 0 error",
