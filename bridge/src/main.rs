@@ -2,41 +2,38 @@
 //! decision procedure (`volta_analysis::canon::Session`) and report equality
 //! over the reals.  Volta's frontend is PTX; this bypasses it and uses only
 //! the canonicalizer, so every verdict here is Volta's, not a reimplementation.
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+//!
+//! The input is a binary node stream (`tvj/decide/volta_bridge.py` writes it),
+//! decoded in one pass straight into the arena.  It used to arrive as JSON and be
+//! deserialised into a `Vec<Node>` first: at a measured 245 bytes of Python dict
+//! and 80 bytes of JSON text per node, that hop cost more than the term graph it
+//! described, and its Rust half came out of the same address-space cap this
+//! process canonicalises under.
+use serde::Serialize;
 use std::io::Read;
 use std::time::Instant;
 use volta_analysis::canon::Session;
 use volta_analysis::symbolic::{ExprArena, ExprId};
 
-#[derive(Deserialize)]
-#[serde(tag = "op")]
-enum Node {
-    #[serde(rename = "sym")]   Sym { buf: String, idx: u64 },
-    #[serde(rename = "const")] Const { v: f64 },
-    #[serde(rename = "rat")]   Rat { num: i64, den: i64 },
-    #[serde(rename = "add")]   Add { a: usize, b: usize },
-    #[serde(rename = "mul")]   Mul { a: usize, b: usize },
-    #[serde(rename = "div")]   Div { a: usize, b: usize },
-    #[serde(rename = "max")]   Max { a: usize, b: usize },
-    #[serde(rename = "min")]   Min { a: usize, b: usize },
-    #[serde(rename = "exp")]   Exp { a: usize },
-    #[serde(rename = "sqrt")]  Sqrt { a: usize },
-    #[serde(rename = "log")]   Log { a: usize },
-    #[serde(rename = "abs")]   Abs { a: usize },
-    #[serde(rename = "select")] Select { c: usize, t: usize, f: usize },
-    #[serde(rename = "cmp")]   Cmp { kind: String, a: usize, b: usize },
-    #[serde(rename = "not")]   Not { a: usize },
-    #[serde(rename = "and")]   And { a: usize, b: usize },
-    #[serde(rename = "or")]    Or { a: usize, b: usize },
-}
+const MAGIC: &[u8; 4] = b"TVJB";
+const WIRE_VERSION: u8 = 1;
 
-#[derive(Deserialize)]
-struct Input {
-    nodes_a: Vec<Node>,
-    nodes_b: Vec<Node>,
-    pairs: Vec<(usize, usize)>,
-    budget: Option<u64>,
+/// A read cursor over the message.  Every `take` is bounds-checked by the slice
+/// index, so a truncated or malformed stream panics here rather than being
+/// half-interpreted into an arena and decided.
+struct Cur<'a> { b: &'a [u8], i: usize }
+
+impl<'a> Cur<'a> {
+    fn take(&mut self, n: usize) -> &'a [u8] {
+        let s = &self.b[self.i..self.i + n];
+        self.i += n;
+        s
+    }
+    fn u8(&mut self) -> u8 { let v = self.b[self.i]; self.i += 1; v }
+    fn u32(&mut self) -> u32 { u32::from_le_bytes(self.take(4).try_into().unwrap()) }
+    fn u64(&mut self) -> u64 { u64::from_le_bytes(self.take(8).try_into().unwrap()) }
+    fn i64(&mut self) -> i64 { i64::from_le_bytes(self.take(8).try_into().unwrap()) }
+    fn f64(&mut self) -> f64 { f64::from_le_bytes(self.take(8).try_into().unwrap()) }
 }
 
 #[derive(Serialize)]
@@ -55,43 +52,59 @@ fn peak_rss_mb() -> f64 {
         .map(|kb| kb / 1024.0).unwrap_or(-1.0)
 }
 
-fn build(nodes: &[Node]) -> (ExprArena, Vec<ExprId>) {
+/// One side: a string table, then the node stream.  Nodes are children-first, so
+/// an operand index always names a node already built and one pass suffices.
+fn build(c: &mut Cur) -> (ExprArena, Vec<ExprId>) {
     let mut ar = ExprArena::new();
-    let mut ids: Vec<ExprId> = Vec::with_capacity(nodes.len());
-    let mut strings: HashMap<String, _> = HashMap::new();
-    for n in nodes {
-        let id = match n {
-            Node::Sym { buf, idx } => {
-                let s = match strings.get(buf) {
-                    Some(s) => *s,
-                    None => { let s = ar.intern_string(buf.clone()); strings.insert(buf.clone(), s); s }
-                };
-                ar.input_element(s, *idx)
+    let n_str = c.u32() as usize;
+    let mut strings = Vec::with_capacity(n_str);
+    for _ in 0..n_str {
+        let len = c.u32() as usize;
+        let s = std::str::from_utf8(c.take(len)).expect("bad utf-8 in the string table");
+        strings.push(ar.intern_string(s.to_string()));
+    }
+    let n = c.u32() as usize;
+    let nbytes = c.u32() as usize;
+    let start = c.i;
+    let mut ids: Vec<ExprId> = Vec::with_capacity(n);
+    for _ in 0..n {
+        let op = c.u8();
+        let id = match op {
+            0 => { let s = c.u32() as usize; let idx = c.u64(); ar.input_element(strings[s], idx) }
+            1 => { let v = c.f64(); ar.float_from_f64(v).expect("NaN constant") }
+            2 => {
+                let num = c.i64(); let den = c.i64();
+                ar.real(volta_analysis::symbolic::Real::from_rational(rug::Rational::from((num, den))))
             }
-            Node::Const { v } => ar.float_from_f64(*v).expect("NaN constant"),
-            Node::Rat { num, den } => ar.real(volta_analysis::symbolic::Real::from_rational(rug::Rational::from((*num, *den)))),
-            Node::Add { a, b } => ar.add(ids[*a], ids[*b]),
-            Node::Mul { a, b } => ar.mul(ids[*a], ids[*b]),
-            Node::Div { a, b } => ar.div(ids[*a], ids[*b]),
-            Node::Max { a, b } => ar.max(ids[*a], ids[*b]),
-            Node::Min { a, b } => ar.min(ids[*a], ids[*b]),
-            Node::Exp { a }    => ar.exp(ids[*a]),
-            Node::Sqrt { a }   => ar.sqrt(ids[*a]),
-            Node::Log { a }    => ar.log(ids[*a]),
-            Node::Abs { a }    => ar.abs(ids[*a]),
-            Node::Select { c, t, f } => ar.select(ids[*c], ids[*t], ids[*f]),
-            Node::Not { a }    => ar.not(ids[*a]),
-            Node::And { a, b } => ar.and(ids[*a], ids[*b]),
-            Node::Or  { a, b } => ar.or(ids[*a], ids[*b]),
-            Node::Cmp { kind, a, b } => match kind.as_str() {
-                "lt" => ar.lt(ids[*a], ids[*b]), "le" => ar.le(ids[*a], ids[*b]),
-                "gt" => ar.gt(ids[*a], ids[*b]), "ge" => ar.ge(ids[*a], ids[*b]),
-                "eq" => ar.eq(ids[*a], ids[*b]), "ne" => ar.ne(ids[*a], ids[*b]),
-                other => panic!("unknown comparison {other}"),
-            },
+            3..=9 | 16..=21 => {
+                let a = ids[c.u32() as usize];
+                let b = ids[c.u32() as usize];
+                match op {
+                    3 => ar.add(a, b), 4 => ar.mul(a, b), 5 => ar.div(a, b),
+                    6 => ar.max(a, b), 7 => ar.min(a, b), 8 => ar.and(a, b), 9 => ar.or(a, b),
+                    16 => ar.lt(a, b), 17 => ar.le(a, b), 18 => ar.gt(a, b),
+                    19 => ar.ge(a, b), 20 => ar.eq(a, b), 21 => ar.ne(a, b),
+                    _ => unreachable!(),
+                }
+            }
+            10..=14 => {
+                let a = ids[c.u32() as usize];
+                match op {
+                    10 => ar.exp(a), 11 => ar.sqrt(a), 12 => ar.log(a),
+                    13 => ar.abs(a), 14 => ar.not(a), _ => unreachable!(),
+                }
+            }
+            15 => {
+                let cond = ids[c.u32() as usize];
+                let t = ids[c.u32() as usize];
+                let f = ids[c.u32() as usize];
+                ar.select(cond, t, f)
+            }
+            other => panic!("unknown wire op {other}"),
         };
         ids.push(id);
     }
+    assert_eq!(c.i - start, nbytes, "node stream is {} bytes, header says {}", c.i - start, nbytes);
     (ar, ids)
 }
 
@@ -111,16 +124,25 @@ fn main() {
     let cap: u64 = std::env::var("VOLTA_MEM_GB").ok()
         .and_then(|s| s.parse().ok()).unwrap_or(4);
     cap_address_space(cap);
-    let mut s = String::new();
-    std::io::stdin().read_to_string(&mut s).unwrap();
-    let inp: Input = serde_json::from_str(&s).expect("bad input json");
+    let mut buf = Vec::new();
+    std::io::stdin().read_to_end(&mut buf).unwrap();
+    let mut c = Cur { b: &buf, i: 0 };
+    assert_eq!(c.take(4), MAGIC, "input is not a tvj bridge stream");
+    let v = c.u8();
+    assert_eq!(v, WIRE_VERSION, "stream is wire version {v}; this binary speaks {WIRE_VERSION}");
+    let has_budget = c.u8();
+    let budget = c.u64();
+
     let t0 = Instant::now();
-    let (ar_a, ids_a) = build(&inp.nodes_a);
-    let (ar_b, ids_b) = build(&inp.nodes_b);
-    let mut sess = match inp.budget { Some(b) => Session::with_budget(b), None => Session::new() };
-    let mut results = Vec::with_capacity(inp.pairs.len());
-    for (ia, ib) in &inp.pairs {
-        let r = sess.check_equivalent(&ar_a, ids_a[*ia], &ar_b, ids_b[*ib]);
+    let (ar_a, ids_a) = build(&mut c);
+    let (ar_b, ids_b) = build(&mut c);
+    let n_pairs = c.u32() as usize;
+    let mut sess = if has_budget != 0 { Session::with_budget(budget) } else { Session::new() };
+    let mut results = Vec::with_capacity(n_pairs);
+    for _ in 0..n_pairs {
+        let ia = c.u32() as usize;
+        let ib = c.u32() as usize;
+        let r = sess.check_equivalent(&ar_a, ids_a[ia], &ar_b, ids_b[ib]);
         results.push(match r {
             Ok(true) => "true".to_string(),
             Ok(false) => "false".to_string(),

@@ -301,8 +301,11 @@ products expand. Write the reference max-subtracted and the same comparison fits
 in under a gigabyte.
 
 At L=256 the well-shaped pairs stay under 4.5 GB in Volta while *our* Python side
-(the term DAG plus JSON serialisation) reaches 7.6 GB, which makes bridge
-serialisation the next bottleneck rather than the decision procedure.
+reaches 7.6 GB. That figure predates the bridge's binary wire format: handing one
+node to Volta used to cost a Python dict and about eighty bytes of JSON text, 325
+bytes against the nine it costs now. What is left on this side is the term DAG
+itself, at a measured 390 bytes per interned term — which is where the 8 M term
+budget comes from, and the next thing worth shrinking.
 
 ## Limits
 
