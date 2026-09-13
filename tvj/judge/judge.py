@@ -533,6 +533,9 @@ def judge(cand, timeout=150, tol_trials=5):
         evs = [Extern(e[1], e[2], e[3], roles, e[4] if len(e) > 4 else None) if e[0] == "extern"
                else Launch(*e, roles, scalar_syms) for e in calls]
         rec["kernels"] = [L.fn.__name__ if isinstance(L, Launch) else "extern:" + L.name for L in evs]
+        # The grid each launch ran over.  A launch whose grid is (1,1,1) has a single
+        # program, pid = 0 everywhere, and its pid arithmetic is untested by that row.
+        rec["grids"] = [list(L.grid) for L in evs if isinstance(L, Launch)]
         t0 = time.time(); grid, it = symbolic_run(evs); rec["t_exec"] = round(time.time() - t0, 2)
         rec["mem_errors"] = len(grid.errors)
         # Assumptions the interpreter had to make for the terms to mean anything.

@@ -503,6 +503,24 @@ tensor-parallel collectives, MoE routing, paged attention — where symbolic
 addressing and dynamic shapes are normal rather than exceptional. Read the
 coverage as a property of the corpora, not of the method.
 
+**Every input in the LLM corpus fits in one block, and the verdicts do not
+depend on it.** 155 of 155 first inputs have at most 1024 elements, so 123 of
+the 156 rows were judged with every launch a single program: `pid` was 0
+everywhere, and the arithmetic on it, and any tail past the first block, went
+untested. Re-judged with the leading dimension set to an odd m with m·inner >
+2048 — 33 for `[4,4,4,4]`, 2112 elements, at least two blocks and a tail for
+any BLOCK from 128 to 2048 (`tvj/judge/shape2_run.py`,
+`results/triton_traces_shape2.jsonl`) — **0 of the 89 PASS rows change
+verdict**: no FAIL, no crash, and 9 of the 10 FAILs stay FAILs
+(`python3 -m tvj.measure.shape2`). Three verdicts move, none across PASS: one
+FAIL becomes UNKNOWN because the witness Z3 found at the small shape is out of
+the numeric search's reach at the large one; one UNKNOWN times out; and one
+UNKNOWN becomes NONDETERMINISTIC — a kernel whose race needs more than one
+program to show, which a single-program grid cannot. The corpus' own tolerance
+test at the small shape was blind to nothing here. The theorem is still at a
+point; two points agreeing is evidence about these kernels, not a proof about
+the next one.
+
 **And nothing here has faced an adversary — which is three claims, not one.**
 Every kernel judged was written without knowledge of this judge: Inductor is a
 compiler, and the LLM corpus is a model answering in good faith. Kernels
@@ -616,10 +634,10 @@ it.
 tvj/core/      term algebra and semantics      terms  ttir  sexec  semantics  bounded
 tvj/decide/    deciding whether two terms agree  volta_bridge  casesplit  numeric  ranges  accuracy  delegate
 tvj/front/     getting terms out of torch and the GPU   spec  capture  torchtrace  shapes
-tvj/judge/     the judge and the corpus runners  judge  kernelbook_run  traces_run  record  report  testgen
+tvj/judge/     the judge and the corpus runners  judge  kernelbook_run  traces_run  shape2_run  record  report  testgen
 tvj/fixtures/  kernels and references the checks use    kernels  attn  hacks  sm  probes  mutants
 tvj/checks/    scripts that assert something     check  spec_test  spec_agree  delegate_test  ...
-tvj/measure/   scripts that measure something    difftest  ieee_gap  lanes  pit  limits  directives  relcompare  ...
+tvj/measure/   scripts that measure something    difftest  ieee_gap  lanes  pit  limits  shape2  directives  relcompare  ...
 tvj/tools/     open one row and look at it       kb_debug  memcheck  traces_repro
 verify.py      re-runs all of the above and asserts every claim
 ```

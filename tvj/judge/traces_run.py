@@ -114,8 +114,13 @@ CORPORA = {
 EXTRA = ("num_turns", "stop_reason")
 
 
-def build(r):
-    """Row -> Candidate, or (None, rec) naming the bucket this row falls into."""
+def build(r, transform=None):
+    """Row -> Candidate, or (None, rec) naming the bucket this row falls into.
+
+    `transform(inputs) -> inputs` is applied to get_inputs()'s tensors before the
+    adapter check, so the Candidate -- and every probe the judge draws from its
+    shapes -- carries the transformed inputs.  shape2_run.py uses it to judge the
+    corpus at a second shape; the default judges the row's own."""
     rec = {"key": r["sample_key"], "label": bool(r["result_correctness"]),
            "speedup": r.get("result_speedup")}
     rec.update({k: r[k] for k in EXTRA if k in r})
@@ -126,6 +131,7 @@ def build(r):
     ia, ik = ns["get_init_inputs"]()
     torch.manual_seed(0); model = ns[cname](*ia, **ik).cuda().eval()
     torch.manual_seed(1); inputs = [x.cuda() if torch.is_tensor(x) else x for x in ns["get_inputs"]()]
+    if transform is not None: inputs = transform(inputs)
 
     try:
         ns2 = load_mod(r["triton_code"], r["sample_key"])

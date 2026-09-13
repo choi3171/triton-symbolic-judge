@@ -43,10 +43,14 @@ from tvj.root import at
 
 PUBLISHED = {"kb":        "results/kernelbook.jsonl",
              "traces":    "results/triton_traces.jsonl",
-             "multiturn": "results/triton_multiturn.jsonl"}
+             "multiturn": "results/triton_multiturn.jsonl",
+             # the LLM corpus again, every input's leading dim scaled so the flat
+             # element count spans at least two blocks with a tail (shape2_run.py)
+             "traces_shape2": "results/triton_traces_shape2.jsonl"}
 LIVE      = {"kb":        "data/kb_live.jsonl",
              "traces":    "data/tr_live.jsonl",
-             "multiturn": "data/mt_live.jsonl"}
+             "multiturn": "data/mt_live.jsonl",
+             "traces_shape2": "data/tr2_live.jsonl"}
 
 
 class Stale(Exception):

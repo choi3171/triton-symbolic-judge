@@ -7,7 +7,7 @@ on a lattice, float-validity by intervals, accuracy by running f32 and f64 side
 by side. Shapes are covered as far as the kernel's own contract demands.
 
 The judgement itself lives entirely in `tvj/judge/judge.py`. The corpus runners
-(`tvj/judge/kernelbook_run.py`, `tvj/judge/traces_run.py`) are adapters whose
+(`tvj/judge/kernelbook_run.py`, `tvj/judge/traces_run.py`; `shape2_run.py` re-judges the LLM corpus at a second shape) are adapters whose
 only job is to turn one row into a `Candidate` — a reference module, a callable
 that runs the kernel, and the inputs. After that both corpora take the same path
 through the same code.

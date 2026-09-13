@@ -270,6 +270,9 @@ claim("precond2.py", "float-validity preconditions: naive softmax |x|<=86.64, sa
 # the file, because that is what a reader looks for.  Resolve the name to a module
 # path once and run it with -m, so the working directory stays the repo root and
 # every `data/...` path in the scripts keeps meaning what it meant.
+claim("shape2.py", "the LLM corpus re-judged at a second shape (leading dim an odd m with m*inner > 2048: two or more blocks and a tail): 0 of the 89 PASS rows change verdict, and 123 of 156 rows had run every launch as a single program at the corpus shape",
+      [r"PASS at shape 1, FAIL or crash at shape 2: 0", r"\nPASS\s+89\s+0\s+0\s+0\s+1\n", r"single program at shape 1: 123 of 156"])
+
 MODULE = {}
 for _root, _dirs, _files in os.walk("tvj"):
     for _f in _files:
