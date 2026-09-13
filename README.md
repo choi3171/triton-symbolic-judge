@@ -102,7 +102,7 @@ tvj/fixtures/  kernels and references the checks use    kernels  attn  hacks  sm
 tvj/checks/    scripts that assert something     check  spec_test  spec_agree  delegate_test  ...
 tvj/measure/   scripts that measure something    difftest  ieee_gap  lanes  pit  nf_rat  limits  shape2  directives  relcompare  ...
 tvj/tools/     open one row and look at it       kb_debug  memcheck  traces_repro
-verify.py      re-runs all of the above and asserts every claim
+verify.py      runs the checks and measurements above
 ```
 
 `tvj/judge/judge.py` is the whole judgment. The dataset runners are thin adapters around it.
