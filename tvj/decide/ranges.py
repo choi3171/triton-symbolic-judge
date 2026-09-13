@@ -94,14 +94,17 @@ def _exp_minus_max(a):
     if not (isinstance(a, T.App) and a.fn == "exp"): return None
     return _scaled_max_split(a.args[0])
 
-def _softmax_denominator(t, floor=None):
+def _softmax_denominator(t, lo_of=None):
     """Add whose args are all exp(k*x_j - k*M) with one k, one M, {x_j} covering leaves(M).
 
-    `floor` is the smallest value any input can take in the range being analysed.
-    A sentinel constant in M is dropped from leaves(M) only when it is below that
-    floor: then some x_j attains the max and one term is exp(0).  Below the floor
-    the sentinel IS the max, every term underflows, and the division really is by
-    ~0 -- which is a precondition of the kernel, not an artifact, and is kept."""
+    The conclusion, sum >= 1, needs one term to be exp(0): some x_j must ATTAIN M.
+    A sentinel constant c in M would defeat that only if c exceeded every x_j.  So
+    c is dropped from leaves(M) exactly when the analysis's own lower bound for
+    every non-constant member of M is above c -- `lo_of(term)` is that bound, and
+    it is the caller's (`Analysis.range`), at the input range being analysed.
+    Without `lo_of` nothing is dropped.  Below every member's bound the sentinel
+    IS the max, every term underflows, and the division really is by ~0: that is
+    a precondition of the kernel, not an artifact, and it is kept."""
     if not isinstance(t, T.Add): return False
     xs, M, K = set(), None, None
     for a in t.args:
@@ -111,15 +114,23 @@ def _softmax_denominator(t, floor=None):
         if M is None: M, K = m, k
         elif m is not M or k != K: return False
         xs.add(x)
-    drop = SENTINEL if floor is None else min(SENTINEL, floor - 1.0)
-    return M is not None and _max_leaves(M, set(), drop_below=drop) <= xs
+    if M is None: return False
+    members = _max_leaves(M, set(), drop_below=float("-inf"))        # everything, sentinels included
+    consts = [m for m in members if isinstance(m, T.Const)]
+    if consts:
+        if lo_of is None: return False                                  # no context: keep the sentinel
+        real = [m for m in members if not isinstance(m, T.Const)]
+        if not real: return False
+        bound = min(lo_of(m) for m in real)                             # every genuine member is above this
+        if not all(c.v <= SENTINEL and c.v < bound for c in consts): return False
+        members = set(real)
+    return members <= xs
 
 class Analysis:
     def __init__(self, inputs):
         """inputs: buf -> (lo, hi) for every element of that buffer."""
         self.inputs, self.memo = inputs, {}
         self.flagged = {}       # flag -> first term that raised it
-        self.floor = min((lo for lo, hi in inputs.values()), default=None)   # see _softmax_denominator
 
     def _flag(self, name, t):
         self.flagged.setdefault(name, t)
@@ -150,7 +161,7 @@ class Analysis:
             if _scaled_max_split(t) is not None:
                 hi = min(hi, 0.0)
             # R2:  sum_j exp(x_j - max(S)) >= 1 when {x_j} covers S: one term is exp(0).
-            if _softmax_denominator(t, floor=self.floor):
+            if _softmax_denominator(t, lo_of=lambda m: self.range(m).lo):
                 lo = max(lo, 1.0)
             # R3:  an underflowing term whose magnitude is below half an ulp of the
             #      sum's lower bound cannot move the float sum: absorbed.
