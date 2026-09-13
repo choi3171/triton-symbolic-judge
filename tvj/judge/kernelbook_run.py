@@ -126,7 +126,8 @@ if __name__ == "__main__":
         # last.  Row 17 flips between tol=True and tol=False (its parameters are
         # uninitialised), which is exactly how it was noticed.
         if not os.environ.get("TVJ_NO_RECORD"):
-            open("data/kb_live.jsonl", "a").write(json.dumps(rec) + "\n")
+            from tvj.judge import record
+            open(record.scratch("kb"), "a").write(json.dumps(rec) + "\n")
         flags = ("" if rec.get("det", True) else " NONDET") \
               + (" DEGEN" if rec.get("degenerate_params") else "") \
               + (f" prec<{rec['prec']}" if rec.get("prec") not in (None, "exact", "ieee", "f32") else "") \
@@ -142,3 +143,8 @@ if __name__ == "__main__":
     reasons = collections.Counter((x["verdict"], x.get("reason", "")[:60]) for x in recs if x["verdict"] != "PASS")
     for (v, why), k in reasons.most_common(15): print(f"  {k:3d}  {v:<18} {why}")
     print("== tolerance vs judge ==", dict(collections.Counter((x.get("tol"), x["verdict"]) for x in recs)))
+    if not os.environ.get("TVJ_NO_RECORD"):
+        # the rows are in the scratch record, which no report reads until it is published
+        from tvj.judge import record
+        print(f"\n{len(recs)} rows appended to {record.LIVE['kb']} -- unpublished.  Reports read "
+              f"{record.PUBLISHED['kb']} until:  python3 -m tvj.judge.record publish kb", flush=True)

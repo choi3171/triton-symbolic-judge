@@ -8,18 +8,15 @@ Both corpora go through the same judge, so they report the same way.  The verdic
 histogram IS the coverage measurement: every place the pipeline cannot go is a
 bucket, and the honest number is how few of them say PASS or FAIL.
 """
-import collections, glob, json, os, statistics, sys
+import collections, json, os, statistics, sys
+from tvj.judge import record
 
+# Which file each corpus is read from is decided in tvj/judge/record.py, for every
+# reader at once.  This used to merge the published record with `data/` winning,
+# which reported whatever old run a machine had left behind.
 CORPORA = {
-    # `jsonls` in increasing precedence: the record a run is appending to under
-    # `data/` is fresher than the one published under `results/`, and `data/` is
-    # generated, so a clean clone has only the published one.
-    "kb":     dict(title="KernelBook (Inductor-generated)",
-                   jsonls=("results/kernelbook.jsonl", "data/kb_live.jsonl"),
-                   globs=("data/kb_*_*.json",), label=None, name="name"),
-    "traces": dict(title="LLM-generated Triton",
-                   jsonls=("results/triton_traces.jsonl",), globs=(),
-                   label="label", name="model"),
+    "kb":     dict(title="KernelBook (Inductor-generated)", label=None, name="name"),
+    "traces": dict(title="LLM-generated Triton", label="label", name="model"),
 }
 # PASS-ASSUMING is decided, but only within a stated assumption the judge cannot
 # discharge -- an unguarded scatter is well defined exactly when its indices are
@@ -27,27 +24,15 @@ CORPORA = {
 DECIDED = ("PASS", "FAIL", "PASS-ASSUMING")
 
 
-def load(c):
-    recs = []
-    for g in c["globs"]:
-        for f in sorted(glob.glob(g)):
-            if any(s in f for s in ("live", "partial", "kernelbook_400")): continue
-            try: recs += json.load(open(f))
-            except (ValueError, OSError): pass
-    for p in c["jsonls"]:                                # appended in time order: latest wins
-        if not os.path.exists(p): continue
-        for line in open(p):
-            try: recs.append(json.loads(line))
-            except ValueError: pass
-    by = {r["i"]: r for r in recs if "i" in r}
-    return [by[k] for k in sorted(by)]
+def load(key):
+    return record.load(key) or []
 
 
 def pct(n, d): return f"{100 * n / d:5.1f}%" if d else "    -"
 
 
 def report(key):
-    c = CORPORA[key]; recs = load(c)
+    c = CORPORA[key]; recs = load(key)
     if not recs: print(f"== {c['title']} ==\n  no results\n"); return
     n = len(recs)
     V = collections.Counter(r["verdict"] for r in recs)

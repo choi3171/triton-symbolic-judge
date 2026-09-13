@@ -9,6 +9,9 @@
 cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 . ./_python.sh
 export VOLTA_MEM_GB=${VOLTA_MEM_GB:-4}
+# A scratch record left in data/ is a run nobody published; appending a new run to
+# it and publishing the mixture is how an old run's verdicts reach the record.
+"$PY" -m tvj.judge.record require-clean || exit 1
 N_KB=$("$PY" -c "import json;print(len(json.load(open('data/kernelbook_400.json'))))")
 N_TR=$("$PY" -c "import json;print(sum(1 for r in json.load(open('data/triton_traces.json')) if r['source']=='kernelbook'))")
 
@@ -32,9 +35,10 @@ while [ "$i" -lt "$N_TR" ] && [ "$tries" -lt 12 ]; do
   i=$((nxt + 1)); tries=$((tries + 1))
 done
 
-# Publish the KernelBook record beside the LLM one.  `data/` is generated and
-# gitignored, so leaving it there was why a clean clone could regenerate half the
-# Limits table and half the report -- see tvj/measure/limits.py load().
-[ -f data/kb_live.jsonl ] && cp data/kb_live.jsonl results/kernelbook.jsonl
+# Publish by merging this run's scratch into the committed records, then archive the
+# scratch.  This was `cp data/kb_live.jsonl results/kernelbook.jsonl`, which replaced
+# the whole record with whatever the scratch held -- including an old run's, on any
+# machine that had one -- and the LLM rows never went through a scratch at all.
+"$PY" -m tvj.judge.record publish || exit 1
 "$PY" -m tvj.judge.report both > results/report.txt 2>&1
 echo RUN-ALL-DONE

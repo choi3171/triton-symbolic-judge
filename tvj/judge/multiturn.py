@@ -20,20 +20,17 @@ knowing too, and is the more likely outcome at this dose.
     python3 multiturn.py
 """
 import collections, json, os, sys
+from tvj.judge import record
 
-REC = "results/triton_multiturn.jsonl"
+REC = record.PUBLISHED["multiturn"]
 ROWS = "data/triton_multiturn.json"
 DECIDED = ("PASS", "FAIL")
 
 
 def load():
     rows = [r for r in json.load(open(ROWS)) if r["source"] == "kernelbook"]
-    recs = {}
-    for p in (REC, REC.replace(".jsonl", "_rows.jsonl")):
-        if not os.path.exists(p): continue
-        for l in open(p):
-            try: r = json.loads(l); recs[r["i"]] = r
-            except ValueError: pass
+    # a `_rows` file used to win over the published record here; see record.py
+    recs = {r["i"]: r for r in (record.load("multiturn") or [])}
     for i, r in recs.items():
         if i < len(rows):
             r.setdefault("num_turns", rows[i].get("num_turns"))
@@ -44,7 +41,9 @@ def load():
 def main():
     rows, recs = load()
     if not recs:
-        print(f"no records yet -- run:  python3 traces_run.py --corpus multiturn"); return
+        print("no published records -- run:  python3 -m tvj.judge.traces_run --corpus multiturn\n"
+              "  then:  python3 -m tvj.judge.record publish multiturn   "
+              "(or TVJ_RECORD=live to read the run before publishing)"); return
     n = len(recs)
     V = collections.Counter(r["verdict"] for r in recs)
     print(f"multi-turn corpus: {n} rows judged\n")

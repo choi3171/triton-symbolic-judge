@@ -18,12 +18,16 @@ export VOLTA_MEM_GB=${VOLTA_MEM_GB:-4}
 CAP=${CAP:-900}                     # seconds per invocation before it is killed
 
 case "$1" in
-  kb) SCRIPT=tvj.judge.kernelbook_run; REC=data/kb_live.jsonl; LOG=results/kb_full.log
+  kb) SCRIPT=tvj.judge.kernelbook_run; LOG=results/kb_full.log
       N=$("$PY" -c "import json;print(len(json.load(open('data/kernelbook_400.json'))))") ;;
-  traces) SCRIPT=tvj.judge.traces_run; REC=results/triton_traces.jsonl; LOG=results/tr_full.log
+  traces) SCRIPT=tvj.judge.traces_run; LOG=results/tr_full.log
       N=$("$PY" -c "import json;print(sum(1 for r in json.load(open('data/triton_traces.json')) if r['source']=='kernelbook'))") ;;
   *) echo "usage: $0 kb|traces"; exit 2 ;;
 esac
+# Resume from the corpus' SCRATCH record, named in one place.  For the LLM corpus
+# this used to be the committed record, so once that held all 156 rows a resume
+# computed "last row 155" and reported complete without judging anything.
+REC=$("$PY" -c "from tvj.judge.record import LIVE; print(LIVE['$1'])")
 
 last() { "$PY" -c "
 import json, os
@@ -52,3 +56,6 @@ while [ "$floor" -lt "$N" ]; do
   floor=$next
 done
 echo "$1 complete: last record $(last) of $((N - 1)); stepped over:${skipped:- none}"
+# Merge into the committed record: a row this run stepped over keeps its published
+# verdict rather than vanishing from the record.
+"$PY" -m tvj.judge.record publish "$1" || exit 1

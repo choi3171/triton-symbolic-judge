@@ -245,6 +245,12 @@ claim("branch_test.py", "block arguments are bound across a `cf` branch: `^bb1(%
       [r"8/8 carried values correct, 1/1 refusal",
        r"refused: branch passes 0 argument\(s\) to `\^bb3`, which declares 1"])
 
+claim("record_test.py", "a scratch record left in data/ reaches no report, and publishing merges instead of clobbering: a reader gets the committed record unless TVJ_RECORD=live, a run's re-judged rows replace only their own verdicts, and a scratch older than the committed record is refused",
+      [r"ok  a reader gets the published record, not the scratch",
+       r"ok  publishing an older scratch is refused",
+       r"ok  rows it re-judged replace theirs; every other row stays as published",
+       r"record precedence and publishing hold"])
+
 # --- precondition layer ------------------------------------------------------
 claim("precond2.py", "float-validity preconditions: naive softmax |x|<=86.64, safe softmax unbounded; naive attention overflows at |q|,|k|<=10",
       [r"softmax_naive\s+inputs in \[-100,100\]:\s+overflow x16",

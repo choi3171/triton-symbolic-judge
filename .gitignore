@@ -11,6 +11,8 @@ data/triton_traces.json
 # intermediate per-run records; results/ holds the ones worth keeping
 data/kb_*.json
 data/kb_*.jsonl
+# a run's scratch record, published into results/ by tvj/judge/record.py
+data/*_live.jsonl
 __pycache__/
 *.pyc
 

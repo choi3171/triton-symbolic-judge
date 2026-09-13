@@ -16,7 +16,7 @@ parameters the disagreement merely rests on (see testgen.derive).
     python3 -m tvj.measure.directives
 """
 import collections, json, os, sys
-from tvj.root import at
+from tvj.judge import record
 from tvj.judge.testgen import derive
 
 # Neither of these is an axis.  `pin-point` is the concrete witness -- one input,
@@ -24,27 +24,16 @@ from tvj.judge.testgen import derive
 # vary, and a row that yields only that has still yielded no axis.
 NOT_AN_AXIS = ("pin-point", "compare-relative")
 
-CORPORA = [("KernelBook", ("data/kb_live.jsonl", "results/kernelbook.jsonl")),
-           ("LLM traces", ("results/triton_traces.jsonl",))]
-
-
-def load(paths):
-    for p in paths:
-        if not os.path.exists(at(p)): continue
-        rows = {}
-        for ln in open(at(p)):
-            ln = ln.strip()
-            if ln: r = json.loads(ln); rows[r["i"]] = r
-        return [rows[i] for i in sorted(rows)]
-    return None
+# The file is chosen by tvj/judge/record.py; see there for why it is not `data/` first.
+CORPORA = [("KernelBook", "kb"), ("LLM traces", "traces")]
 
 
 if __name__ == "__main__":
     fails, kinds, axis, per = [], collections.Counter(), 0, {}
-    for title, paths in CORPORA:
-        recs = load(paths)
+    for title, corpus in CORPORA:
+        recs = record.load(corpus)
         if recs is None:
-            sys.exit(f"directives: no run record for {title} -- looked in {', '.join(paths)}.\n"
+            sys.exit(f"directives: no run record for {title} -- looked in {', '.join(record.paths(corpus))}.\n"
                      "  Counted FROM the corpus run; without the record there is nothing to count.")
         f = [r for r in recs if r["verdict"] == "FAIL"]
         a = sum(1 for r in f if any(d.kind not in NOT_AN_AXIS for d in derive(r)))

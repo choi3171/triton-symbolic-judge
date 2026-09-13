@@ -315,10 +315,11 @@ budget comes from, and the next thing worth shrinking.
 ## Limits
 
 <!-- generated: `python3 -m tvj.measure.limits`.  Do not hand-edit; the version
-     written by hand drifted every time a corpus was re-run.  It reads the two run
-     records -- `results/kernelbook.jsonl` and `results/triton_traces.jsonl`, or
-     the live `data/kb_live.jsonl` if a run is in progress -- and refuses to print
-     a table when one of them is missing, where it used to print "100 % hangs the
+     written by hand drifted every time a corpus was re-run.  It reads the two
+     committed run records -- `results/kernelbook.jsonl` and
+     `results/triton_traces.jsonl` -- whatever a run has left in `data/`, unless
+     TVJ_RECORD=live asks for that (tvj/judge/record.py), and refuses to print a
+     table when one of them is missing, where it used to print "100 % hangs the
      judge" instead. -->
 
 **Judged coverage.** 76 % of 400 Inductor-generated rows, 63 % of 156 LLM-written rows.
@@ -540,7 +541,7 @@ it.
 tvj/core/      term algebra and semantics      terms  ttir  sexec  semantics  bounded
 tvj/decide/    deciding whether two terms agree  volta_bridge  casesplit  numeric  ranges  accuracy  delegate
 tvj/front/     getting terms out of torch and the GPU   spec  capture  torchtrace  shapes
-tvj/judge/     the judge and the corpus runners  judge  kernelbook_run  traces_run  report  testgen
+tvj/judge/     the judge and the corpus runners  judge  kernelbook_run  traces_run  record  report  testgen
 tvj/fixtures/  kernels and references the checks use    kernels  attn  hacks  sm  probes  mutants
 tvj/checks/    scripts that assert something     check  spec_test  spec_agree  delegate_test  ...
 tvj/measure/   scripts that measure something    difftest  ieee_gap  limits  directives  relcompare  ...

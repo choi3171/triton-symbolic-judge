@@ -104,9 +104,11 @@ def call_wrapper(entry, model, inputs):
     return entry(*args, **kwargs)
 
 
+# Where each corpus' verdicts are written and published is tvj/judge/record.py's
+# business, keyed by the same names.
 CORPORA = {
-    "traces":    dict(path="data/triton_traces.json",    out="results/triton_traces.jsonl"),
-    "multiturn": dict(path="data/triton_multiturn.json", out="results/triton_multiturn.jsonl"),
+    "traces":    dict(path="data/triton_traces.json"),
+    "multiturn": dict(path="data/triton_multiturn.json"),
 }
 # carried into the record so the report can condition on them
 EXTRA = ("num_turns", "stop_reason")
@@ -173,7 +175,6 @@ if __name__ == "__main__":
     rows = [r for r in json.load(open(C["path"])) if r["source"] == "kernelbook"]
     if len(sys.argv) > 2 and sys.argv[1] == "--rows":              # targeted re-run: --rows 42,53
         todo = [(i, rows[i]) for i in (int(x) for x in sys.argv[2].split(","))]
-        path = C["out"].replace(".jsonl", "_rows.jsonl")
     else:
         # `start count`, the same convention as kernelbook_run.py.  It used to be
         # `start end` here, and run_resume.sh -- written against the other one --
@@ -184,9 +185,12 @@ if __name__ == "__main__":
         todo = list(enumerate(rows[lo:lo + n], lo))
         if not todo:
             print(f"empty range: start={lo} count={n} over {len(rows)} rows", flush=True)
-        path = C["out"]
-    os.makedirs("results", exist_ok=True)
-    out = open(path, "a")
+    # Every run -- full, or `--rows` -- appends to this corpus' scratch and is
+    # published by merging (tvj/judge/record.py).  Full runs used to append straight
+    # into the committed record, which reached 596 lines for 156 rows, and `--rows`
+    # went to a `_rows` file that nothing published.
+    from tvj.judge import record
+    out = open(os.devnull if os.environ.get("TVJ_NO_RECORD") else record.scratch(corpus), "a")
     for i, r in todo:
         rec = judge_row(r); rec["i"] = i
         out.write(json.dumps(rec) + "\n"); out.flush()
@@ -199,3 +203,7 @@ if __name__ == "__main__":
               f"d4={str(rec.get('d4')):<5} {rec.get('model','?')[:22]:<22} "
               f"{rec.get('reason', rec.get('prec',''))[:60]}{flag}", flush=True)
     out.close()
+    if not os.environ.get("TVJ_NO_RECORD") and todo:
+        # the rows are in the scratch record, which no report reads until it is published
+        print(f"\nrows appended to {record.LIVE[corpus]} -- unpublished.  Reports read "
+              f"{record.PUBLISHED[corpus]} until:  python3 -m tvj.judge.record publish {corpus}", flush=True)
