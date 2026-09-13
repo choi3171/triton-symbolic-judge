@@ -121,4 +121,4 @@ tvj/tools/     open one row and look at it       kb_debug  memcheck  traces_repr
 verify.py      re-runs all of the above and asserts every claim
 ```
 
-`tvj/judge/judge.py` is the whole judgement. The corpus runners are thin adapters around it.
+`tvj/judge/judge.py` is the whole judgment. The corpus runners are thin adapters around it.

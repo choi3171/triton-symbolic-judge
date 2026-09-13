@@ -2,12 +2,9 @@
 
 ## Cost
 
-Hand-measured, not asserted by `verify.py`: `tvj/measure/scale.py` and
-`tvj/checks/volta_attn.py` are the scripts, and only their verdicts are claims.
-Sizes rather than times — a time belongs to whatever machine ran it, and these
-numbers do not.
+Hand-measured, not checked by `verify.py`. The scripts are `tvj/measure/scale.py` and `tvj/checks/volta_attn.py`, and only their verdicts are claims. The numbers are sizes, not times, because a time depends on the machine and these do not.
 
-Attention at D=16, BM=BN=16, comparing three formulations pairwise:
+Attention at D=16, BM=BN=16, three formulations compared pairwise:
 
 | L | key blocks | outputs | term ops |
 |---:|---:|---:|---:|
@@ -16,128 +13,52 @@ Attention at D=16, BM=BN=16, comparing three formulations pairwise:
 | 128 | 8 | 2048 | 206.8 M |
 | 256 | 16 | 4096 | 349 M–509 M |
 
-**The cost of deciding is per shape, and it is dominated by the difference in
-shape between the two kernels, not by their size.** Lane by lane, at L=128 the
-bridge peaks at 0.56 GB for ref vs safe, 0.77 GB for safe vs flash, and **9.19 GB
-for ref vs flash** — twelve times more for the same problem, because the naive
-reference does not subtract the max, so its exponential polynomial cannot share
-the `−m` atom and the cross products expand. Deciding one representative per
-shape instead, the same ref vs flash pair at L=128 — which exceeds a 4 GB cap
-lane by lane — decides in **0.14 GB and 0.31 s**, every lane getting the verdict
-the lane-by-lane run gives; at L=64 it is 1.04 GB → 0.03 GB, and across the pairs
-both paths can run, 154× less Volta time (`tvj/measure/lanes.py`). What that
-leaves is the per-shape cost, which is a matter of how many distinct
-denominators one output sums rather than of size — the paragraph on caps below.
+The cost of deciding is per shape, and it depends on how different the two kernels' shapes are, not on their size. Lane by lane at L=128, the bridge peaks at 0.56 GB for ref vs safe, 0.77 GB for safe vs flash, and 9.19 GB for ref vs flash. That is twelve times more for the same problem, because the naive reference does not subtract the max, so its exponential polynomial cannot share the `−m` atom and the cross products expand.
 
-At L=256 the well-shaped pairs stay under 4.5 GB in Volta while *our* Python side
-reaches 7.6 GB. That figure predates the bridge's binary wire format: handing one
-node to Volta used to cost a Python dict and about eighty bytes of JSON text, 325
-bytes against the nine it costs now. What is left on this side is the term DAG
-itself, at a measured 390 bytes per interned term — which is where the 8 M term
-budget comes from, and the next thing worth shrinking.
+With one representative per shape, the same ref vs flash pair at L=128, which exceeds a 4 GB cap lane by lane, is decided in 0.14 GB and 0.31 s, and every lane gets the verdict the lane-by-lane run gives. At L=64 it goes from 1.04 GB to 0.03 GB, and across the pairs both paths can run, Volta time drops 154× (`tvj/measure/lanes.py`). What is left is the cost per shape, which depends on how many distinct denominators one output sums, not on size. See the caps section below.
 
-## What is left, and who can steer into it
+At L=256 the well-shaped pairs stay under 4.5 GB in Volta, while our Python side reaches 7.6 GB. That figure is from before the bridge's binary wire format. Passing one node to Volta used to cost a Python dict and about eighty bytes of JSON, 325 bytes against the nine it costs now. What is left on this side is the term DAG itself, measured at 390 bytes per interned term. This is where the 8 M term budget comes from, and it is the next thing to shrink.
 
-The Limits table in the [README](../README.md#limits) sorts every row the judge does not decide by cause.
+## Rows not decided, and who can steer into them
 
-What matters is not how much is left but **who controls whether a kernel lands
-there**. A reference op we do not model is fixed by the task, so no policy can
-aim at it. A TTIR construct we do not model is a target, and so is our own cost:
-on that reading a generator could aim at 24 rows of KernelBook and 19 of the LLM
-corpus, 6.0 % against 12.2 %. The two are not the same kind of target, though.
-The TTIR bucket is a list of named constructs — 17 rows where an integer is
-derived from a real value or read from memory, 3 of transposed convolution, 1 of `scf.while` — and
-it shrinks as they are implemented. The caps bucket is a region, and it is the
-paragraph after next.
+The Limits table in the [README](../README.md#limits) sorts every row the judge does not decide by cause. What matters is who controls whether a kernel ends up there. A torch op we do not model is fixed by the task, so no policy can aim at it. A TTIR construct we do not model can be aimed at, and so can our own cost limits. Counted that way, a generator could aim at 24 rows of KernelBook and 19 of the LLM corpus, 6.0 % and 12.2 %.
 
-**The torch tail is the largest steerable bucket in the LLM corpus, and its fix
-is not ours to apply.** These are wrappers that finish the computation in PyTorch
-after the kernels. Requiring generation to emit a single fused Triton kernel
-removes the bucket entirely — and that is not a concession, because a torch tail
-also costs a launch and a materialised intermediate. The constraint that makes a
-kernel analysable is the one that makes it fast.
+These are two different kinds of target. The TTIR bucket is a list of named constructs: 17 rows where an integer is derived from a real value or read from memory, 3 of transposed convolution, 1 of `scf.while`. It shrinks as they are implemented. The caps bucket is a region, covered below.
 
-**Our caps are steerable — along one axis now, not two.** 13 of those 20 rows
-died inside Volta, on its address space or its term-operation budget. Two things
-can put a pair there. *Width* — many lanes of the same shape, each canonicalised
-separately — used to: holding the reference fixed, one correct attention kernel
-decided in 0.56 GB and another in 9.19 GB, and the expensive one was the faster
-one (`tvj/measure/steerable.py` demonstrates it: three formulations pairwise
-equal over the reals, a cap between the cheapest and the dearest, and the judge
-decides two and returns UNDECIDED on the third). Deciding one representative per
-shape closes that axis: the 9.19 GB pair is 0.14 GB. *Division* remains. The 13
-corpus rows are all of one kind — row 97 is 256 lanes of 2 shapes and each
-representative alone exceeds the budget; row 61 is 679 nodes per output and
-canonicalising one of them exceeds 3 GB — and it is not the kind the paper
-allows for. Volta canonicalises to a rational N/D and adds two fractions with
-different denominators by multiplying the denominators (`canon/ops.rs`,
-`rat_add_v`). A multi-head attention output sums one fraction per head, each
-over that head's own softmax denominator, so the common denominator has L^H
-terms and the equality check N1·D2 = N2·D1 has, counted without building it
-(`python3 -m tvj.measure.nf_rat kb 61`), about 10^6 monomials per output on row
-61 and 10^11 on row 97 — each carrying an exponent polynomial. The
-multiplicative depth of every one of these terms is 1. Volta's paper argues the
-blowup away by depth: canonicalisation "may cause exponential blowup", it says,
-but "since machine learning workloads do not typically have computations with
-high multiplicative depth, this blowup does not happen in practice". That
-argument is correct and does not cover this: the growth is exponential in the
-number of heads whose fractions one output sums, and on these two corpora it
-happens 13 times in 556 rows, in the kernels the paper is about. (An earlier
-version of this paragraph blamed multiplicative depth; it was measured at 1.)
+### The torch tail
 
-Evaluation at random points does not build the normal form, and on the same 4 GB
-machine it decided 6 of those 13 in the experiment: rows 86, 310, 318 and 328
-PASS, and **rows 61 and 97 FAIL, with a numeric witness the GPU reproduces** —
-the two of the thirteen that fail the corpus' own tolerance test. Republished
-across both corpora, with Volta held to a 60 s wall clock and the Z3 stage to a
-size and a time budget so the stages after them get a turn, the caps bucket gave
-up fourteen rows: eight KernelBook FAILs the GPU reproduces (61, 97, 116, 137,
-194, 196, 233, 306), five PASSes, and LLM row 127 ([findings](findings.md)). Nothing Volta-bound is
-left in it. Where the stage
-reaches a row and does not decide it, the row is UNKNOWN and has a name: LLM rows
-11 and 150 are genuinely different functions — the kernel omits softplus's
-threshold branch — but the numeric witness search does not reach where they
-differ; LLM rows 51 and 92 separate at the witness but the GPU does not reproduce
-it, which is our modelling gap and is reported as such.
+The largest steerable bucket in the LLM corpus is the torch tail, and the fix is not ours to make. These are wrappers that finish the computation in PyTorch after the kernels. Requiring a single fused Triton kernel removes the bucket entirely. That is not an extra cost, because a torch tail also costs a launch and a materialized intermediate. The constraint that makes a kernel analyzable is the same one that makes it fast.
 
-**And the bucket was not neutral.** Before the random-point stage existed, 6 of
-the 15 KernelBook rows that hit one of our caps failed the corpus' own tolerance
-test, against 23 of the 300 decided rows — 5.2 times the rate, Fisher p = 0.001.
-Raising the caps (`TVJ_ROW_TIMEOUT=1800`, `VOLTA_MEM_GB=24`,
-`TVJ_VOLTA_BUDGET=4e9`) decided four of the six, every one a FAIL the GPU
-reproduced at the witness point. The caps were not holding rows nobody had got
-to; they were holding defects. The enrichment is gone now — 0 of the 5 rows left in
-the bucket fail tolerance — and it is gone for the right reason: all six are
-FAILs at the default caps (61, 97, 137, 194, 196, 233). What remains in the
-bucket is three rows the 150 s row alarm stops (176, 363, 372) and two over the
-term budget (235, 344); none is blocked inside Volta.
+### The caps
 
-The two that do not come back that way are the two blocked inside Volta rather
-than by a cap of ours, and 24 GB is not enough for either. One is row 61, where
-reading the generated wrapper settles it without the judge at all:
-`Attention.forward(self, k, q)` takes k first, and the wrapper hands `w_k` the
-second input and `w_q` the first — both `(4, 4, 1, 4)`, so `assert_size_stride`
-is satisfied. The GPU disagrees by 0.26, deterministically. Memory does not reach
-it; evaluation at random points does, in 9 ms, and the row is a FAIL. The
-random-point stage, with budgets on Volta and Z3 so it is reached, bought the
-whole Volta-bound part of this bucket; raising the row alarm and the term budget
-is what is left to buy, and the rows it would buy are named above.
+Our caps can be steered into, now along one axis instead of two. Before the random-point stage, the caps bucket held 20 rows, and 13 of them failed inside Volta, on its address space or its term-operation budget. Two things can put a pair there.
 
-The number is not the reason; the representation is. A term graph is proportional
-to the **work a kernel does rather than to the program that does it** — a tiled
-matmul is Θ(M·N·K) nodes because every output element is denoted as a sum of K
-products — so "make it bigger" is always available. Raising a cap is worth doing,
-and the four rows above are what it buys; what it does not do is change what the
-threshold is a function of, which is why the axis survives every raise. Most of this
-section is that one fact in other clothes: shapes are fixed because the grid is
-enumerated, integers are concrete because that is what makes the memory check a
-dictionary lookup, and a branch on a loaded value is refused because there is
-nothing symbolic to split. It is a trade rather than a mistake — the same
-unrolling is why AC decides 257 of 277 value questions with no solver call, since
-everything is ground. A row over a cap is reported UNKNOWN rather than FAIL, so a
-kernel that is wrong *and* expensive to canonicalise used to go unjudged; the
-random-point stage judges it wherever the field encoding applies, and rows 61 and
-97 are what that is worth. Outside the fragment the axis is still open;
-and unlike the TTIR bucket, this one needs no unusual operation at all. No
-policy has been observed trying — that is the third claim under the adversary
-heading in [limits.md](limits.md).
+The first is width: many lanes of the same shape, each canonicalized separately. With the reference fixed, one correct attention kernel was decided in 0.56 GB and another in 9.19 GB, and the expensive one was the faster kernel. `tvj/measure/steerable.py` demonstrates it: three formulations equal over the reals, a cap between the cheapest and the most expensive, and the judge decides two and returns UNDECIDED on the third. One representative per shape closes this. The 9.19 GB pair takes 0.14 GB.
+
+The second is division, and it remains. The 13 corpus rows are all this kind. Row 97 is 256 lanes of 2 shapes, and each representative alone exceeds the budget. Row 61 is 679 nodes per output, and canonicalizing one of them takes more than 3 GB. Volta canonicalizes to a rational N/D and adds two fractions with different denominators by multiplying the denominators (`canon/ops.rs`, `rat_add_v`). A multi-head attention output is a sum of one fraction per head, each over that head's own softmax denominator. So the common denominator has L^H terms, and the equality check N1·D2 = N2·D1 has about 10^6 monomials per output on row 61 and 10^11 on row 97, each carrying an exponent polynomial. These are counted without building them (`python3 -m tvj.measure.nf_rat kb 61`). The multiplicative depth of every one of these terms is 1.
+
+Volta's paper argues the blowup away by depth. Canonicalization "may cause exponential blowup", but "since machine learning workloads do not typically have computations with high multiplicative depth, this blowup does not happen in practice". The argument is correct, but it does not cover this case. The growth here is exponential in the number of heads whose fractions one output sums, and on these two corpora it happens in 13 of 556 rows, in the kind of kernel the paper is about. An earlier version of this section blamed multiplicative depth. It was measured at 1.
+
+### Random points
+
+Evaluation at random points does not build the normal form. On the same 4 GB machine it decided 6 of those 13 in the first experiment: rows 86, 310, 318 and 328 PASS, and rows 61 and 97 FAIL with a numeric witness the GPU reproduces. Those two are the two of the 13 that fail the corpus' own tolerance test.
+
+After republishing both corpora, with Volta limited to a 60 s wall clock and Z3 to a size and time budget so the later stages get a turn, the caps bucket gave up 14 rows: eight KernelBook FAILs the GPU reproduces (61, 97, 116, 137, 194, 196, 233, 306), five PASSes, and LLM row 127 ([findings.md](findings.md)). Nothing blocked in Volta is left in it.
+
+Rows the stage reaches but does not decide are UNKNOWN, each for a known reason. LLM rows 11 and 150 are really different functions, since the kernel omits softplus's threshold branch, but the numeric witness search does not reach where they differ. LLM rows 51 and 92 separate at the witness, but the GPU does not reproduce it. That is a gap in our model, and it is reported as one.
+
+### The bucket held defects
+
+Before the random-point stage, 6 of the 15 KernelBook rows that hit one of our caps failed the corpus' own tolerance test, against 23 of the 300 decided rows. That is 5.2 times the rate, Fisher p = 0.001. Raising the caps (`TVJ_ROW_TIMEOUT=1800`, `VOLTA_MEM_GB=24`, `TVJ_VOLTA_BUDGET=4e9`) decided four of the six, and every one was a FAIL the GPU reproduced at the witness point. So the caps were holding defects, not just rows nobody had reached.
+
+That enrichment is gone now: 0 of the 5 rows left in the bucket fail tolerance. It is gone because all six are FAILs at the default caps (61, 97, 137, 194, 196, 233). The bucket now holds three rows stopped by the 150 s row alarm (176, 363, 372) and two over the term budget (235, 344). None is blocked inside Volta.
+
+The two rows that raising the caps did not decide were the two blocked inside Volta rather than by a cap of ours, and 24 GB was not enough for either. One is row 61, where reading the generated wrapper settles it without the judge: `Attention.forward(self, k, q)` takes k first, and the wrapper passes the second input to `w_k` and the first to `w_q`. Both are `(4, 4, 1, 4)`, so `assert_size_stride` passes. The GPU disagrees by 0.26, deterministically. The memory check does not catch it. Evaluation at random points does, in 9 ms, and the row is a FAIL. The random-point stage, with budgets on Volta and Z3 so that it is reached, decided the whole Volta-bound part of this bucket. Raising the row alarm and the term budget is what is left, and the rows it would decide are named above.
+
+### Why a cap is always reachable
+
+A term graph grows with the work a kernel does, not with the size of the program. A tiled matmul is Θ(M·N·K) nodes, because every output element is a sum of K products. So making a kernel bigger is always possible. Raising a cap is still worth doing, and the four rows above are what it buys. But it does not change what the threshold depends on, so this way into the bucket stays open after every raise.
+
+Much of this page follows from that. Shapes are fixed because the grid is enumerated. Integers are concrete because that makes the memory check a dictionary lookup. A branch on a loaded value is refused because there is nothing symbolic to split. This is a trade-off, not a mistake: the same unrolling is why AC decides 257 of 277 value questions with no solver call, since everything is ground.
+
+A row over a cap is UNKNOWN, not FAIL, so a kernel that is wrong and expensive to canonicalize used to go unjudged. The random-point stage now judges it wherever the field encoding applies, and rows 61 and 97 show what that is worth. Outside the encoding this is still open, and unlike the TTIR bucket it needs no unusual operation. No policy has been seen trying. That is the third claim under "No adversary yet" in [limits.md](limits.md).
