@@ -259,7 +259,7 @@ these parameters*, *poison this buffer*. Derived from a single kernel, two
 directives catch all 7 of the documented exploits; the corpus' own correctness
 check catches none of them.
 
-Over the 43 FAILs in the two corpora the axis comes out for **26**, and what
+Over the 43 FAILs in the two corpora the axis comes out for **31**, and what
 separates them is the shape of the defect rather than the size of the corpus.
 `vary-parameter` and `vary-input` are named by the buffers the *reference* reads
 and the *kernel* does not, so they fire when a kernel omits something — the LLM
