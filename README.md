@@ -334,8 +334,8 @@ shape instead, the same ref vs flash pair at L=128 — which exceeds a 4 GB cap
 lane by lane — decides in **0.14 GB and 0.31 s**, every lane getting the verdict
 the lane-by-lane run gives; at L=64 it is 1.04 GB → 0.03 GB, and across the pairs
 both paths can run, 154× less Volta time (`tvj/measure/lanes.py`). What that
-leaves is the per-shape cost, which is a matter of multiplicative depth rather
-than of size — the paragraph on caps below.
+leaves is the per-shape cost, which is a matter of how many distinct
+denominators one output sums rather than of size — the paragraph on caps below.
 
 At L=256 the well-shaped pairs stay under 4.5 GB in Volta while *our* Python side
 reaches 7.6 GB. That figure predates the bridge's binary wire format: handing one
@@ -393,17 +393,25 @@ decided in 0.56 GB and another in 9.19 GB, and the expensive one was the faster
 one (`tvj/measure/steerable.py` demonstrates it: three formulations pairwise
 equal over the reals, a cap between the cheapest and the dearest, and the judge
 decides two and returns UNDECIDED on the third). Deciding one representative per
-shape closes that axis: the 9.19 GB pair is 0.14 GB. *Depth* remains. The 13
-corpus rows are all depth — row 97 is 256 lanes of 2 shapes and each
+shape closes that axis: the 9.19 GB pair is 0.14 GB. *Division* remains. The 13
+corpus rows are all of one kind — row 97 is 256 lanes of 2 shapes and each
 representative alone exceeds the budget; row 61 is 679 nodes per output and
-canonicalising one of them exceeds 3 GB. What blows up is the normal form, a sum
-of products of atoms, which is exponential in multiplicative depth and nearly
-independent of the DAG's size. Volta's paper expects none of this:
-canonicalisation "may cause exponential blowup", it says, but "since machine
-learning workloads do not typically have computations with high multiplicative
-depth, this blowup does not happen in practice". On these two corpora it happens
-13 times in 556 rows — a measured counterexample to the assumption the decision
-procedure rests on.
+canonicalising one of them exceeds 3 GB — and it is not the kind the paper
+allows for. Volta canonicalises to a rational N/D and adds two fractions with
+different denominators by multiplying the denominators (`canon/ops.rs`,
+`rat_add_v`). A multi-head attention output sums one fraction per head, each
+over that head's own softmax denominator, so the common denominator has L^H
+terms and the equality check N1·D2 = N2·D1 has, counted without building it
+(`python3 -m tvj.measure.nf_rat kb 61`), about 10^6 monomials per output on row
+61 and 10^11 on row 97 — each carrying an exponent polynomial. The
+multiplicative depth of every one of these terms is 1. Volta's paper argues the
+blowup away by depth: canonicalisation "may cause exponential blowup", it says,
+but "since machine learning workloads do not typically have computations with
+high multiplicative depth, this blowup does not happen in practice". That
+argument is correct and does not cover this: the growth is exponential in the
+number of heads whose fractions one output sums, and on these two corpora it
+happens 13 times in 556 rows, in the kernels the paper is about. (An earlier
+version of this paragraph blamed multiplicative depth; it was measured at 1.)
 
 Evaluation at random points does not build the normal form, and on the same 4 GB
 machine it decided 6 of those 13 in the experiment: rows 86, 310, 318 and 328
@@ -637,7 +645,7 @@ tvj/front/     getting terms out of torch and the GPU   spec  capture  torchtrac
 tvj/judge/     the judge and the corpus runners  judge  kernelbook_run  traces_run  shape2_run  record  report  testgen
 tvj/fixtures/  kernels and references the checks use    kernels  attn  hacks  sm  probes  mutants
 tvj/checks/    scripts that assert something     check  spec_test  spec_agree  delegate_test  ...
-tvj/measure/   scripts that measure something    difftest  ieee_gap  lanes  pit  limits  shape2  directives  relcompare  ...
+tvj/measure/   scripts that measure something    difftest  ieee_gap  lanes  pit  nf_rat  limits  shape2  directives  relcompare  ...
 tvj/tools/     open one row and look at it       kb_debug  memcheck  traces_repro
 verify.py      re-runs all of the above and asserts every claim
 ```

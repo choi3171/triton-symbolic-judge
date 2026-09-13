@@ -3,7 +3,9 @@
 The judge's expensive case is not a big term graph.  KernelBook row 61's output
 element is 679 nodes and canonicalising ONE of them exceeds 3 GB: what blows up
 is the normal form -- expanding a product of sums into a sum of products is
-exponential in multiplicative depth and nearly independent of the input's size.
+exponential in the number of distinct denominators one output sums (Volta adds
+fractions by multiplying denominators), and nearly independent of the input's size;
+see measure/nf_rat.py.
 
 Schwartz-Zippel says you never needed the normal form.  A non-zero polynomial of
 total degree d, evaluated at a point drawn uniformly from S^n, is zero with
