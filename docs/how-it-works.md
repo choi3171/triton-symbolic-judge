@@ -8,17 +8,17 @@ The judge builds two term graphs, one for the PyTorch module and one for the Tri
 
 ## Kernel side
 
-`JITFunction.run` is hooked, so the real GPU launches of the generated code are recorded: kernel, grid, arguments and constexprs. The TTIR of each launch is then executed symbolically over the whole grid. Tensors are matched to roles by storage base plus element offset, not by object identity, because Inductor hands out `reinterpret_tensor` views and non-contiguous output strides. The generator only has to provide `launch(*inputs) -> output`.
+`JITFunction.run` is hooked, so the real GPU launches of the generated code are recorded: kernel, grid, arguments and constexprs. The TTIR of each launch is then executed symbolically over the whole grid. Tensors are matched to roles by storage base plus element offset, not by object identity, because Inductor hands out `reinterpret_tensor` views and non-contiguous output strides. The kernel only has to be callable as `launch(*inputs) -> output`.
 
 ## Floats as reals
 
-Floating point is modeled as exact real numbers, and most of the design follows from that. Reassociation is not a difference, so split-K, flash attention and tree reductions all come out equal. The two things real numbers cannot see, representation error and precision contracts, need their own checks.
+Floating point is modeled as exact real numbers. Reassociation is then not a difference, so split-K, flash attention and tree reductions all come out equal. The two things real numbers cannot see, representation error and precision contracts, need their own checks.
 
 ## Determinism first
 
-Before any other check, the kernel runs twice on the same inputs and the two outputs must be bit-identical. If they are not, the other checks mean nothing. If the reference is also nondeterministic, the task itself is, and there is nothing to compare either way. Both cases get the verdict `NONDETERMINISTIC`, not FAIL, because neither says anything about correctness.
+Before any other check, the kernel runs twice on the same inputs and the two outputs must be bit-identical. If they are not, the other checks mean nothing. If the reference is also nondeterministic, the task itself is. Both cases get the verdict `NONDETERMINISTIC`, not FAIL, because neither says anything about correctness.
 
-A kernel that draws random numbers is still judged. Its k-th draw becomes a named input buffer, and the reference's k-th draw is bound to the same name. So the question becomes whether the two compute the same thing given the same draw. That binding is an assumption, and it is recorded with the verdict (see `PASS-ASSUMING` below). Randomness that never shows up as a tensor of its own cannot be bound to anything and is refused, e.g. `native_dropout` returns its mask, not its draw.
+A kernel that draws random numbers is still judged. Its k-th draw becomes a named input buffer, and the reference's k-th draw is bound to the same name, so the question becomes whether the two compute the same thing given the same draw. That binding is an assumption and is recorded with the verdict (see `PASS-ASSUMING` below). Randomness that never shows up as a tensor of its own cannot be bound and is refused, e.g. `native_dropout` returns its mask, not its draw.
 
 ## Five checks
 
@@ -26,11 +26,13 @@ Each check is a separate condition, and a FAIL says which one failed.
 
 | check | question | how |
 |---|---|---|
-| value | same real number? | AC normal form, then [Volta](https://github.com/willtunnels/volta)'s decision procedure, Z3 case splits for piecewise terms, and evaluation at random points |
+| value | same real number? | AC normal form, [Volta](https://github.com/willtunnels/volta)'s decision procedure, Z3 case splits, evaluation at random points |
 | memory | does it read what no launch wrote, skip an output element, or race with itself? | symbolic execution of the whole grid |
 | precision | is it less precise than the reference? | a lattice with a direction, since `ieee → tf32` is equal over the reals but not a refinement |
 | precondition | does the real-number result still hold in float32? | interval analysis with three relational rules |
 | accuracy | same value, but arranged so float32 loses more digits? | evaluate both terms in float32 and in float64, and compare the errors |
+
+The accuracy check exists for cases like `E[X²]−E[X]²` against a stable variance. The two are equal over the reals, so the value check correctly passes them, but the first form cancels catastrophically. The check evaluates both terms at inputs that stress cancellation, once rounding every step to float32 and once in float64, and compares the two errors. It rejects the unstable form at ~3×10⁵ the reference's error, in a regime where the reference is still accurate, and passes legitimate reassociation (`tvj/checks/accuracy_test.py`).
 
 ## Deciding value
 
@@ -43,45 +45,41 @@ Value is decided in stages, cheapest first:
 | Volta, then Z3 | 1 |
 | evaluation at random points | 5 |
 
-Counts are over the 277 value decisions in `results/report.txt`.
+Counts from `results/report.txt`.
 
 Terms are hash-consed and normalized for associativity and commutativity, so most pairs come out identical and no solver runs.
 
-What is left goes to Volta's exponential-polynomial procedure, with one representative per shape instead of one call per output element. A tile kernel's outputs fall into a few shapes over different leaves: 1024 matmul lanes are one shape, and so are 2048 attention lanes. Volta treats a leaf as an opaque variable, so pairs with the same joint shape are the same question up to renaming (`tvj/measure/lanes.py`).
+What is left goes to Volta's exponential-polynomial procedure, one representative per shape instead of one call per output element. A tile kernel's outputs fall into a few shapes over different leaves, e.g. 1024 matmul lanes are one shape, and so are 512 attention lanes. Volta treats a leaf as an opaque variable, so pairs with the same joint shape are the same question up to renaming (`tvj/measure/lanes.py`).
 
-Z3 case splits handle piecewise terms. [Volta's paper](https://arxiv.org/abs/2511.12638) says these "could be handled by case splits" but does not do it. Z3 only runs on shapes that random real points cannot already separate, since a pair that separates by a clear margin is not equal and a sound prover will not say otherwise.
+Z3 case splits handle piecewise terms, which [Volta's paper](https://arxiv.org/abs/2511.12638) says "could be handled by case splits" but does not do. Z3 only runs on shapes that random real points cannot already separate, since a pair that separates by a clear margin is not equal.
 
-What Volta cannot canonicalize within its caps is decided by evaluating both sides at random points over a finite field (`tvj/measure/pit.py`). The encoding follows [Mirage](https://arxiv.org/abs/2405.05751): `exp(x) = ω^x`, with exponents in a field whose order divides the base field's, so `exp(a)·exp(b) = exp(a+b)` holds in the field. An exp nested inside another exp's exponent becomes an opaque atom, the same trade already made for max and min. This never builds the normal form, so its cost follows the size of the DAG, not of the polynomial. Its "equal" is probabilistic, with error at most (d/2⁶¹)³ per pair, and the verdict records it as `via: pit` with the seed. The seed is drawn fresh for every judgment.
+What Volta cannot canonicalize within its caps is decided by evaluating both sides at random points over a finite field (`tvj/measure/pit.py`). The encoding follows [Mirage](https://arxiv.org/abs/2405.05751): `exp(x) = ω^x`, with exponents in a field whose order divides the base field's, so `exp(a)·exp(b) = exp(a+b)` holds in the field. An exp nested inside another exp's exponent becomes an opaque atom, as max and min already are. This never builds the normal form, so its cost follows the size of the DAG, not of the polynomial. Its "equal" is probabilistic, with error at most (d/2⁶¹)³ per pair, and the verdict records it as `via: pit` with the seed. The seed is drawn fresh for every judgment.
 
 ## Delegation
 
-AC decides this much because of delegation. When both sides hand the same operation to the same library call with the same arguments, it becomes one uninterpreted symbol, and hash-consing decides it for free. This is sound only if the symbol's name encodes everything the result depends on. So every builder fails closed: a parameter it does not encode raises an error instead of producing a symbol. If the two sides do not match, the symbols are expanded and the pair is decided the slow way, because two different uninterpreted symbols are not a counterexample.
+When both sides hand the same operation to the same library call with the same arguments, it becomes one uninterpreted symbol, and hash-consing decides it for free. This is sound only if the symbol's name encodes everything the result depends on, so every builder fails closed: a parameter it does not encode raises an error instead of producing a symbol. If the two sides do not match, the symbols are expanded and the pair is decided the slow way, because two different uninterpreted symbols are not a counterexample.
 
 ## When a FAIL is reported
 
 Two of the five checks are confirmed on the GPU before a FAIL is reported.
 
-Value is checked at its witness point, the concrete input where the two terms take different values. If the GPU does not show the difference there, the verdict is UNKNOWN, not FAIL. Every false positive this project has produced so far was caught by this rule. "Shows the difference" is measured relative to the reference's own magnitude. An absolute threshold hides a 190 % error when the output is ~1e-4 (row 308 in [findings.md](findings.md)), and at an output of ~1e8 it is below float32's own spacing and means nothing.
+Value is checked at its witness point, the concrete input where the two terms take different values. If the GPU does not show the difference there, the verdict is UNKNOWN, not FAIL. The difference is measured relative to the reference's magnitude. An absolute threshold hides a 190 % error when the output is ~1e-4 (row 308 in [findings.md](findings.md)), and at an output of ~1e8 it is below float32's own spacing.
 
-Accuracy is checked at the input regime that triggered it. Cancellation is silent at the benchmark's inputs, which is why the check exists, and visible at the shifted inputs that trigger it. So if the GPU is silent there, it is a gap in our model, not a defect in the kernel (`tvj/checks/acc_gate.py`).
+Accuracy is checked at the input regime that triggered it. Cancellation is silent at the benchmark's inputs and visible at the shifted inputs that trigger it, so if the GPU is silent there, the model is wrong, not the kernel (`tvj/checks/acc_gate.py`).
 
-The other three checks are deliberately not confirmed this way. The GPU cannot show them: a stale buffer holds the right answer, tf32 is ignored on sm_75, and a narrower validity radius only shows at extreme inputs. Requiring the GPU to reproduce them would throw away exactly the defects a test cannot reach.
+The other three checks are not confirmed this way, because the GPU cannot show them: a stale buffer holds the right answer, tf32 has no effect before Ampere, and a narrower validity radius only shows at extreme inputs. Requiring the GPU to reproduce them would throw away exactly the defects a test cannot reach.
 
 ## PASS-ASSUMING
 
-`PASS-ASSUMING` is a PASS under a stated assumption the judge cannot check. There are two, and both are properties of the input data, not of the kernel. So neither can be proved from the kernel, and both are written into the verdict:
+`PASS-ASSUMING` is a PASS under a stated assumption the judge cannot check. Both kinds are properties of the input data, not of the kernel:
 
-- `index-distinct`: a scatter to a data-dependent address is well defined exactly when the indices are pairwise distinct. torch is in the same position and handles it the same way, since `scatter_` is documented as nondeterministic when indices collide.
+- `index-distinct`: a scatter to a data-dependent address is well defined exactly when the indices are pairwise distinct. torch is in the same position, since `scatter_` is documented as nondeterministic when indices collide.
 - `rng-correspondence`: when both sides draw random numbers, their k-th draws are matched by order and shape. Nothing outside the two programs can confirm those are the same draw.
-
-A PASS that rests on an unstated assumption is not a PASS, so the assumption stays with the verdict.
 
 ## The reference side can be wrong
 
-A wrong reference makes a correct kernel FAIL, which is visible. It can also make a wrong kernel PASS, which is not, and nothing later in the pipeline catches that.
+A wrong reference makes a correct kernel FAIL, which is visible. It can also make a wrong kernel PASS, which is not, and nothing later in the pipeline catches that. A keyword argument silently dropped by `**kwargs`, a reduction over the wrong axis, or a missing `__eq__` that turns `mask == 0` into Python `False` all produce a wrong reference without raising an error.
 
-Three bugs like this shipped before this was taken seriously: an `F.linear(bias=)` keyword dropped by a `**kwargs`, `mean(axis=-1)` turned into a global mean, and `avg_pool2d`'s `ceil_mode` and `count_include_pad` swapped inside a lambda. None of them raised an error. Later, `STensor` had no `__eq__`, so `mask == 0` evaluated to Python `False`, and `masked_fill(mask == 0, -1e9)` built a reference with the mask silently removed.
+So the reference side is checked in two ways. `tvj/checks/spec_sigcheck.py` compares every handler with torch's own signature: no argument swallowed, misplaced, or declared and never read. `tvj/checks/spec_agree.py` runs 113 cases through both torch and the reference side and compares the numbers. Handlers whose edge-case behavior was taken from torch's C++ rather than from its documentation are marked, and a FAIL that depends on one says so.
 
-So the reference side is checked in two ways. `tvj/checks/spec_sigcheck.py` compares every handler with torch's own signature: no argument swallowed, misplaced, or declared and never read. `tvj/checks/spec_agree.py` runs 113 cases through both torch and the reference side and compares the numbers. Handlers whose edge-case behavior was taken from torch's C++ rather than from published documentation are marked, and a FAIL that depends on one says so.
-
-`tvj/core/semantics.py` lists the 23 decisions the interpreter had to make because Triton does not specify them, e.g. what a masked load reads, whether i32 index arithmetic wraps, and whether a reduction is a tree or a fold. Each has its basis and evidence, and five were measured on hardware.
+`tvj/core/semantics.py` lists the 23 decisions the interpreter makes where Triton does not specify the behavior, e.g. what a masked load reads, whether i32 index arithmetic wraps, and whether a reduction is a tree or a fold. Each has its basis and evidence, and five were measured on hardware.

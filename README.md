@@ -33,7 +33,7 @@ In some rows the tolerance test could not have failed at all:
 
 The last one also gets past KernelBench-Verified's hidden tests. They vary the inputs four ways but build the model once, so a kernel with the scale multiply deleted passes all four with max difference 0.
 
-Every FAIL and what hid it: [docs/findings.md](docs/findings.md).
+The rows the tolerance tests missed, and what hid them: [docs/findings.md](docs/findings.md).
 
 ## How it works
 
@@ -80,7 +80,7 @@ More in [docs/limits.md](docs/limits.md) and [docs/caps.md](docs/caps.md).
 | | |
 |---|---|
 | [docs/how-it-works.md](docs/how-it-works.md) | the checks, the GPU gate, the PyTorch side |
-| [docs/findings.md](docs/findings.md) | every FAIL and what hid it |
+| [docs/findings.md](docs/findings.md) | the rows the tolerance tests missed |
 | [docs/testgen.md](docs/testgen.md) | turning a counterexample into a check a harness can run without the judge |
 | [docs/caps.md](docs/caps.md) | cost, the caps, and Volta's normal form |
 | [docs/limits.md](docs/limits.md) | what the method cannot do, and what is not tested |
