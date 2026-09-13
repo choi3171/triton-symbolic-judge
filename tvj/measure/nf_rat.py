@@ -15,13 +15,12 @@ structurally.  Nothing is assumed to cancel, so the count is what the procedure
 materialises unless something cancels; it does not depend on the machine.
 
 What it shows on the rows Volta could not finish: the multiplicative depth is 1
-and the number of distinct denominators equals the number of attention heads.
-A multi-head output sums one fraction per head over that head's own softmax
-denominator, so the common denominator has L^H terms (4^4 = 256 on row 61) and
+and one output sums 4 fractions with different softmax denominators -- the 4
+heads on row 97, and 4 softmax rows over different slices of one input on row
+61 (a single-head module).  So the common denominator has 4^4 = 256 terms and
 the equality check about 10^6 monomials per output on row 61, 10^11 on row 97.
 The paper's argument that blowup "does not happen in practice" is about
-multiplicative depth; this arrives through division, at depth 1, in the kernels
-the paper is about.  Evaluation at random points (measure/pit.py) never forms
+multiplicative depth; this arrives through division, at depth 1.  Evaluation at random points (measure/pit.py) never forms
 the fraction and decides these rows in milliseconds.
 """
 import copy, json, sys

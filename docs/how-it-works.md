@@ -29,10 +29,10 @@ Each check is a separate condition, and a FAIL says which one failed.
 | value | same real number? | AC normal form, [Volta](https://github.com/willtunnels/volta)'s decision procedure, Z3 case splits, evaluation at random points |
 | memory | does it read what no launch wrote, skip an output element, or race with itself? | symbolic execution of the whole grid |
 | precision | is it less precise than the reference? | a lattice with a direction, since `ieee → tf32` is equal over the reals but not a refinement |
-| precondition | does the real-number result still hold in float32? | interval analysis with three relational rules |
+| precondition | does the real-number result still hold in float32? | interval analysis, plus three rules for softmax-like terms |
 | accuracy | same value, but arranged so float32 loses more digits? | evaluate both terms in float32 and in float64, and compare the errors |
 
-The accuracy check exists for cases like `E[X²]−E[X]²` against a stable variance. The two are equal over the reals, so the value check correctly passes them, but the first form cancels catastrophically. The check evaluates both terms at inputs that stress cancellation, once rounding every step to float32 and once in float64, and compares the two errors. It rejects the unstable form at ~3×10⁵ the reference's error, in a regime where the reference is still accurate, and passes legitimate reassociation (`tvj/checks/accuracy_test.py`).
+The accuracy check exists for cases like `E[X²]−E[X]²` against a stable variance. The two are equal over the reals, so the value check correctly passes them, but the first form cancels catastrophically. The check evaluates both terms at inputs that stress cancellation, once rounding every step to float32 and once in float64, and compares the two errors. It rejects the unstable form at about 2.8×10⁵ times the reference's error, in a regime where the reference is still accurate, and passes legitimate reassociation (`tvj/checks/accuracy_test.py`).
 
 ## Deciding value
 
@@ -53,7 +53,7 @@ What is left goes to Volta's exponential-polynomial procedure, one representativ
 
 Z3 case splits handle piecewise terms, which [Volta's paper](https://arxiv.org/abs/2511.12638) says "could be handled by case splits" but does not do. Z3 only runs on shapes that random real points cannot already separate, since a pair that separates by a clear margin is not equal.
 
-What Volta cannot canonicalize within its caps is decided by evaluating both sides at random points over a finite field (`tvj/measure/pit.py`). The encoding follows [Mirage](https://arxiv.org/abs/2405.05751): `exp(x) = ω^x`, with exponents in a field whose order divides the base field's, so `exp(a)·exp(b) = exp(a+b)` holds in the field. An exp nested inside another exp's exponent becomes an opaque atom, as max and min already are. This never builds the normal form, so its cost follows the size of the DAG, not of the polynomial. Its "equal" is probabilistic, with error at most (d/2⁶¹)³ per pair, and the verdict records it as `via: pit` with the seed. The seed is drawn fresh for every judgment.
+What Volta cannot canonicalize within its caps is decided by evaluating both sides at random points over a finite field (`tvj/measure/pit.py`). The encoding follows [Mirage](https://arxiv.org/abs/2405.05751): values live in Z_p and `exp(x) = ω^x`, where ω has order q and q divides p−1, so exponents are taken mod q and `exp(a)·exp(b) = exp(a+b)` holds. An exp nested inside another exp's exponent becomes an opaque atom, as max and min already are. This never builds the normal form, so its cost follows the size of the DAG, not of the polynomial. Its "equal" is probabilistic, with error at most (d/2⁶¹)³ per pair, and the verdict records it as `via: pit` with the seed. The seed is drawn fresh for every judgment.
 
 ## Delegation
 

@@ -25,21 +25,21 @@ The Limits table in the [README](../README.md#limits) sorts every row the judge 
 
 The TTIR bucket is a list of named constructs: 17 rows where an integer is derived from a real value or read from memory, 3 of transposed convolution, 1 of `scf.while`. The caps bucket is different, since any kernel can be made expensive.
 
-The largest steerable bucket in the LLM dataset is the torch tail: wrappers that finish the computation in PyTorch after the kernels. Requiring a single fused Triton kernel removes it. That costs nothing, because a torch tail also costs a launch and a materialized intermediate.
+The largest steerable bucket in the LLM dataset is the torch tail: wrappers that finish the computation in PyTorch after the kernels. Requiring a single fused Triton kernel removes it. A torch tail also costs a launch and a materialized intermediate, so this does not trade away speed.
 
 ## What makes Volta expensive
 
 Two things make a pair expensive for Volta.
 
-The first is width: many lanes of the same shape, each canonicalized separately. Lane by lane, one correct attention kernel takes 0.56 GB against the reference and another takes 9.19 GB, and the expensive one is the faster kernel. `tvj/measure/steerable.py` shows it: three formulations equal over the reals, a cap between the cheapest and the most expensive, and the judge decides two and returns UNDECIDED on the third. One representative per shape closes this, and the 9.19 GB pair takes 0.14 GB.
+The first is width: many lanes of the same shape, each canonicalized separately. Lane by lane, one correct attention kernel takes 0.56 GB against the reference and another takes 9.19 GB, and the expensive one is the faster kernel. `tvj/measure/steerable.py` measures it: three formulations equal over the reals, with an order of magnitude between the cheapest and the most expensive to decide. One representative per shape closes this, and the 9.19 GB pair takes 0.14 GB.
 
-The second is division. Volta canonicalizes to a rational N/D and adds two fractions with different denominators by multiplying the denominators (`canon/ops.rs`, `rat_add_v`). A multi-head attention output is a sum of one fraction per head, each over that head's own softmax denominator. So the common denominator has L^H terms, and the equality check N1·D2 = N2·D1 has about 10^6 monomials per output on KernelBook row 61 and 10^11 on row 97, each carrying an exponent polynomial. These are counted without building them (`python3 -m tvj.measure.nf_rat kb 61`). The multiplicative depth of every one of these terms is 1. Row 97 is 256 lanes of 2 shapes, and each representative alone exceeds Volta's budget. Row 61 is 679 nodes per output, and canonicalizing one of them takes more than 3 GB.
+The second is division. Volta canonicalizes to a rational N/D and adds two fractions with different denominators by multiplying the denominators (`canon/ops.rs`, `rat_add_v`). An attention output that sums several softmax rows, each over its own denominator, therefore has a common denominator with one factor per row. In KernelBook row 97 each output sums the 4 heads, and in row 61 it sums 4 softmax rows over different slices of one input. With L=4 the common denominator has 4^4 = 256 terms, and the equality check N1·D2 = N2·D1 has about 10^6 monomials per output on row 61 and 10^11 on row 97, each carrying an exponent polynomial. These are counted without building them (`python3 -m tvj.measure.nf_rat kb 61`). The multiplicative depth of every one of these terms is 1. On row 61 Volta exceeds its 4 GB cap, and on row 97 it leaves both of the row's 2 shapes undecided.
 
-Volta's paper argues the blowup away by depth: canonicalization "may cause exponential blowup", but "since machine learning workloads do not typically have computations with high multiplicative depth, this blowup does not happen in practice". The argument is correct, but it does not cover this case. The growth here is exponential in the number of heads whose fractions one output sums, and it happens in 13 of the 556 rows of the two datasets.
+Volta's paper argues the blowup away by depth: canonicalization "may cause exponential blowup", but "since machine learning workloads do not typically have computations with high multiplicative depth, this blowup does not happen in practice". The argument is correct, but it does not cover this case. The growth here is exponential in the number of softmax rows one output sums, at depth 1.
 
 ## Random points
 
-Evaluation at random points does not build the normal form, so it decides these rows. Rows 61 and 97 are FAILs with a numeric witness the GPU reproduces, and no row in either dataset is left undecided because of Volta.
+Evaluation at random points does not build the normal form. On rows 61 and 97 it shows that the two sides differ, and both are FAILs with a numeric witness the GPU reproduces. No row is left in the caps bucket because of Volta.
 
 Rows the random-point stage reaches but does not decide are UNKNOWN. LLM rows 11 and 150 are different functions, since the kernel omits softplus's threshold branch, but the numeric witness search does not reach where they differ. LLM rows 51 and 92 separate at the witness, but the GPU does not reproduce it, so the model is assumed wrong and the verdict is UNKNOWN.
 

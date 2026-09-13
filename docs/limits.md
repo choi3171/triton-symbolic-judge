@@ -14,7 +14,7 @@ The memory model maps concrete offsets to terms, so an index loaded from memory 
 
 The grid is enumerated concretely, so shapes are fixed and a verdict is for the input shape it was judged at. Symbolic thread counts can be solved for races (GPUVerify's two-thread reduction), but that reduction does not carry over to values, because an output depends on every program instance, not on a pair.
 
-Every input in the LLM dataset has at most 1024 elements, so most of its rows run every launch as a single program. Re-judging it with the leading dimension set so that every launch has at least two blocks and a tail changes none of its 89 PASS verdicts (`tvj/judge/shape2_run.py`, `python3 -m tvj.measure.shape2`). That is evidence about these kernels, not a proof for others.
+In the LLM dataset the first input of every row has at most 1024 elements, and 123 of the 156 rows run every launch as a single program. The dataset was re-judged with the leading dimension enlarged, so that the flattened input spans at least two blocks and a tail for any BLOCK from 128 to 2048. All 89 PASS rows that could be re-judged stayed PASS. The 90th, row 104, was not re-judged because its reference does not accept the new shape (`tvj/judge/shape2_run.py`, `python3 -m tvj.measure.shape2`). That is evidence about these kernels, not a proof for others.
 
 Integers are concrete: Python `int`s with real two's-complement wraparound. That is what makes the memory check decidable without a solver. The store is a dictionary keyed by `(buffer, offset)`, so out-of-bounds is a comparison and a write conflict is a lookup. Symbolic integers would give symbolic shapes, at that cost.
 

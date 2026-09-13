@@ -12,7 +12,7 @@ python3 verify.py     # --all adds the slow checks
 
 ## Results
 
-Two public datasets, all rows:
+Two public datasets, all rows. The tolerance test is `allclose` with `atol=rtol=1e-2`, the thresholds KernelBench uses for fp32, over 5 runs on `torch.rand` inputs:
 
 | dataset | rows | judged | tolerance test passes, judge FAILs |
 |---|---:|---:|---:|
@@ -21,14 +21,14 @@ Two public datasets, all rows:
 
 "Judged" means PASS, FAIL or PASS-ASSUMING. All 15 FAILs are reproduced on the GPU. No row in either dataset fails the tolerance test and passes the judge.
 
-Example, KernelBook row 308 (`Critic`). The generated wrapper passes tensors into the wrong roles. They are all `(4, 4)`, so `assert_size_stride` passes. The output is around 1e-4, so the benchmark's `atol=1e-3` hides a 190 % relative error.
+Example, KernelBook row 308 (`Critic`). The generated wrapper passes tensors into the wrong roles. They are all `(4, 4)`, so `assert_size_stride` passes. The output is around 1e-4, so the tolerance test's `atol=1e-2` hides a 190 % relative error.
 
 In some rows the tolerance test could not have failed at all:
 
 | why the test cannot fail | rows |
 |---|---|
 | parameters are uninitialized, so garbage is compared with garbage | KernelBook 17 |
-| the output is ~1e-4, and `atol=1e-3` hides a 190 % relative error | KernelBook 308 |
+| the output is ~1e-4, and `atol=1e-2` hides a 190 % relative error | KernelBook 308 |
 | a parameter defaults to the identity of the op it feeds (`bias=0`, `scale=1`), so a kernel that ignores it gives the same bits | 5 LLM kernels, KernelBench level2/85 |
 
 The last one also gets past KernelBench-Verified's hidden tests. They vary the inputs four ways but build the model once, so a kernel with the scale multiply deleted passes all four with max difference 0.

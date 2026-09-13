@@ -4,7 +4,7 @@ When the judge finds a FAIL, it can often give the harness a check that runs wit
 
 ## Directives
 
-The judge reports which named buffers a difference depends on. `tvj/judge/testgen.py` turns that into a harness directive, e.g. vary these parameters, or poison this buffer. Two directives, each derived from one row, catch all 7 rows they apply to. `vary-parameter` from LLM row 97 catches rows 42, 66, 97 and 98, and `stress-regime` from row 23 catches rows 23, 114 and 123. The dataset's own tolerance test catches none of them (`tvj/checks/testgen_validate.py`).
+The judge reports which named buffers a difference depends on. `tvj/judge/testgen.py` turns that into a harness directive, e.g. vary these parameters, or poison this buffer. Two directives, each derived from one row, catch all 7 rows they apply to. `vary-parameter` from LLM row 97 catches rows 42, 66, 97 and 98, and `stress-regime` from row 23 catches rows 23, 114 and 123. The tolerance test catches none of them (`tvj/checks/testgen_validate.py`).
 
 Over the 46 FAILs in the two datasets, 34 give a directive that varies something (parameters, inputs or the input regime), and 12 only give the witness point. What separates them is the kind of defect. `vary-parameter` and `vary-input` are named by buffers the reference reads and the kernel does not, so they fire when a kernel omits something. That is the typical LLM shortcut, where a parameter's default is the identity of whatever uses it.
 
@@ -12,7 +12,7 @@ A compiler does not omit things. It reads everything and arranges it differently
 
 ## Relative comparison
 
-A generated check has to be able to see the row it came from. The harness compares with `allclose(atol=1e-2, rtol=1e-2)`, which has an absolute floor, so at a small reference magnitude it cannot see a difference the judge found. Three FAILs are like this, and two of them are rows their own benchmark passes. At the dataset's own seeds, the absolute comparison misses 13 of 15 trials on them. Scaled by the reference's magnitude, as the GPU gate does, it catches 15 of 15.
+A generated check has to be able to see the row it came from. The harness compares with `allclose(atol=1e-2, rtol=1e-2)`, which has an absolute floor, so at a small reference magnitude it cannot see a difference the judge found. Three FAILs are like this, and two of them pass the tolerance test. At the tolerance test's own seeds, the absolute comparison misses 13 of 15 trials on them. Scaled by the reference's magnitude, as the GPU gate does, it catches 15 of 15.
 
 On the rows the judge PASSes, the worst relative error is 4 × 10⁻⁷ against a threshold of 10⁻⁴, about 250× of headroom before normal float32 reassociation would trigger it (`tvj/measure/relcompare.py`). So `compare-relative` is emitted when the record says the absolute floor would hide the defect. It says how to measure, not what to vary, so it is not counted in the 34.
 
