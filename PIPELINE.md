@@ -33,7 +33,9 @@ through the same code.
     AC normal  unwritten    lattice      intervals     f32 vs f64
     form       buffers      opt ≥ ref    radius        at shifted
     → Volta    races                     comparison    regimes
-    → Z3 split coverage
+      1/shape  coverage
+    → Z3 split
+    → pit
     → numeric
       witness
                               │

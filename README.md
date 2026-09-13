@@ -81,8 +81,9 @@ failed.
 
 Value is decided in four stages, cheapest first. Terms are hash-consed and
 normalised for associativity and commutativity, so most pairs come out
-*identical* and no solver runs at all: **257 of 272** KernelBook value decisions
-finish there. What is left goes to Volta's exponential-polynomial procedure —
+*identical* and no solver runs at all: **257 of 277** KernelBook value decisions
+finish there; Volta decides 14, Z3 one, and evaluation at random points 5. What is
+left after AC goes to Volta's exponential-polynomial procedure —
 **one representative per shape, not one per output element**: a tile kernel's
 outputs are a handful of shapes over different leaves (1024 matmul lanes are one
 shape, 2048 attention lanes are two), and Volta treats a leaf as an opaque
@@ -192,12 +193,12 @@ finds it immediately.
 ### Corpus results
 
 On one criterion — *the corpus' own numeric check passes and the judge still
-FAILs* — there are 13, every one corroborated on hardware before being counted:
+FAILs* — there are 14, every one corroborated on hardware before being counted:
 
 | corpus | judged | tolerance passes, judge FAILs |
 |---|---|---|
-| 400 Inductor-generated (KernelBook) | 76 % | 5 — at the witness point the GPU shows up to 7.3 × 10³ |
-| 156 LLM-generated Triton | 63 % | 8 — 5 on value, 3 on accuracy |
+| 400 Inductor-generated (KernelBook) | 78 % | 5 — at the witness point the GPU shows up to 7.3 × 10³ |
+| 156 LLM-generated Triton | 63 % | 9 — 6 on value, 3 on accuracy |
 
 One of the five is in the count only by luck, and says so: KernelBook row 17
 leaves its parameters uninitialised, so the tolerance test compares garbage with
@@ -222,9 +223,14 @@ disagreement.
 - **The three accuracy rejects are one shape**: `tanh` spelled
   `(e^{2x}−1)/(e^{2x}+1)`, exact over the reals and NaN in float32 above
   x = 44.4. The GPU is non-finite there and the reference is not.
+- **LLM row 127, `PainnRadialBasis`.** The kernel never reads the parameter
+  `p_n`; at the benchmark's inputs the two agree to 2.4 × 10⁻⁷, and at the
+  witness point the GPU shows 3.3. The identity-element mechanism again — and a
+  row only the random-point stage reaches, because Volta has no interpretation
+  for `sin`.
 
-Across the 304 decided KernelBook rows the tolerance test and the judge **agree
-on 295** — 272 both pass, 23 both fail — **and part company on 9, all in one
+Across the 314 decided KernelBook rows the tolerance test and the judge **agree
+on 305** — 277 both pass, 28 both fail — **and part company on 9, all in one
 direction**: 5 rows the tolerance test passes and the judge fails, and 4 it
 cannot judge at all, because both sides draw randomness and there is nothing to
 compare; those the judge decides as PASS-ASSUMING. Zero rows fail the tolerance
@@ -253,7 +259,7 @@ these parameters*, *poison this buffer*. Derived from a single kernel, two
 directives catch all 7 of the documented exploits; the corpus' own correctness
 check catches none of them.
 
-Over the 37 FAILs in the two corpora the axis comes out for **26**, and what
+Over the 43 FAILs in the two corpora the axis comes out for **26**, and what
 separates them is the shape of the defect rather than the size of the corpus.
 `vary-parameter` and `vary-input` are named by the buffers the *reference* reads
 and the *kernel* does not, so they fire when a kernel omits something — the LLM
@@ -339,24 +345,25 @@ budget comes from, and the next thing worth shrinking.
      table when one of them is missing, where it used to print "100 % hangs the
      judge" instead. -->
 
-**Judged coverage.** 76 % of 400 Inductor-generated rows, 63 % of 156 LLM-written rows.
+**Judged coverage.** 78 % of 400 Inductor-generated rows, 63 % of 156 LLM-written rows.
+
 |                                                            | KernelBook | LLM traces | can a generator steer into it? |
 |------------------------------------------------------------|------------|------------|--------------------------------|
 | the reference uses a torch op we do not model              | 12.5 %     | 3.2 %      | no — the task is given         |
 | the kernel uses a TTIR construct we do not model           | 4.5 %      | 1.9 %      | **yes**                        |
 | a torch tail after the kernels we could not replay         | 0.2 %      | 10.3 %     | yes, and see below             |
 | the candidate does not compile or run at all               | —          | 9.6 %      | no                             |
-| our caps: the 150 s alarm, 4 GB for Volta, the term budget | 3.8 %      | 3.2 %      | **yes**, and see below         |
+| our caps: the 150 s alarm, 4 GB for Volta, the term budget | 2.2 %      | 0.6 %      | **yes**, and see below         |
 | our plumbing failed to open the row                        | 0.2 %      | 1.3 %      | no                             |
 | the reference itself is random                             | 0.5 %      | 1.3 %      | no                             |
 | the row hangs the judge and never returns a verdict        | —          | —          | no                             |
-| **the method genuinely cannot decide**                     | 2.2 %      | 6.4 %      | —                              |
+| **the method genuinely cannot decide**                     | 1.2 %      | 8.3 %      | —                              |
 
 What matters is not how much is left but **who controls whether a kernel lands
 there**. A reference op we do not model is fixed by the task, so no policy can
 aim at it. A TTIR construct we do not model is a target, and so is our own cost:
-on that reading a generator could aim at 34 rows of KernelBook and 24 of the LLM
-corpus, 8.5 % against 15.4 %. The two are not the same kind of target, though.
+on that reading a generator could aim at 28 rows of KernelBook and 20 of the LLM
+corpus, 7.0 % against 12.8 %. The two are not the same kind of target, though.
 The TTIR bucket is a list of named constructs — 17 rows of arithmetic on an
 integer loaded from memory, 3 of transposed convolution, 1 of `scf.while` — and
 it shrinks as they are implemented. The caps bucket is a region, and it is the
@@ -390,9 +397,12 @@ depth, this blowup does not happen in practice". On these two corpora it happens
 procedure rests on.
 
 Evaluation at random points does not build the normal form, and on the same 4 GB
-machine it decides 6 of those 13: rows 86, 310, 318 and 328 PASS, and **rows 61
-and 97 FAIL, with a numeric witness the GPU reproduces** — the two of the
-thirteen that fail the corpus' own tolerance test. Of the seven it does not
+machine it decided 6 of those 13 in the experiment: rows 86, 310, 318 and 328
+PASS, and **rows 61 and 97 FAIL, with a numeric witness the GPU reproduces** —
+the two of the thirteen that fail the corpus' own tolerance test. Republished
+across both corpora, with Volta also held to a 60 s wall clock so the stage
+after it gets a turn, the caps bucket gave up eleven rows: five KernelBook FAILs
+the GPU reproduces (61, 97, 196, 233, 306), five PASSes, and LLM row 127 above. Of the seven it does not
 decide, each has a name: row 116 has an `exp` inside an exponent, outside the
 fragment the field encoding covers; row 363 spends 137 s in symbolic execution
 and the spec before any decision runs; three LLM rows separate at random points
@@ -401,13 +411,17 @@ opaque atom — the encoding's stated weakness); and two separate at the witness
 but the GPU does not reproduce it, which is our modelling gap and is reported as
 such.
 
-**And the bucket is not neutral.** 6 of the 15 KernelBook rows that hit one of
-our caps fail the corpus' own tolerance test, against 23 of the 300 decided rows
-— 5.2 times the rate, Fisher p = 0.001. Raise the caps (`TVJ_ROW_TIMEOUT=1800`,
-`VOLTA_MEM_GB=24`, `TVJ_VOLTA_BUDGET=4e9`) and four of the six decide, every one a
-FAIL the GPU reproduces at the witness point: rows 137, 194, 196 and 233, by 1.8,
-0.25, 1.2 and 0.43. The caps were not holding rows nobody had got to. They were
-holding defects.
+**And the bucket was not neutral.** Before the random-point stage existed, 6 of
+the 15 KernelBook rows that hit one of our caps failed the corpus' own tolerance
+test, against 23 of the 300 decided rows — 5.2 times the rate, Fisher p = 0.001.
+Raising the caps (`TVJ_ROW_TIMEOUT=1800`, `VOLTA_MEM_GB=24`,
+`TVJ_VOLTA_BUDGET=4e9`) decided four of the six, every one a FAIL the GPU
+reproduced at the witness point. The caps were not holding rows nobody had got
+to; they were holding defects. The enrichment is gone now — 2 of the 9 rows left
+in the bucket fail tolerance, 2.5×, p = 0.20 — and it is gone for the right
+reason: four of the six are FAILs at the default caps (61, 97, 196, 233), and the
+two that remain, 137 and 194, are the ones the 150 s row alarm stops before any
+decision runs. `TVJ_ROW_TIMEOUT=1800` still decides them.
 
 The two that do not come back that way are the two blocked inside Volta rather
 than by a cap of ours, and 24 GB is not enough for either. One is row 61, where
@@ -429,7 +443,7 @@ section is that one fact in other clothes: shapes are fixed because the grid is
 enumerated, integers are concrete because that is what makes the memory check a
 dictionary lookup, and a branch on a loaded value is refused because there is
 nothing symbolic to split. It is a trade rather than a mistake — the same
-unrolling is why AC decides 257 of 272 value questions with no solver call, since
+unrolling is why AC decides 257 of 277 value questions with no solver call, since
 everything is ground. A row over a cap is reported UNKNOWN rather than FAIL, so a
 kernel that is wrong *and* expensive to canonicalise used to go unjudged; the
 random-point stage judges it wherever the field encoding applies, and rows 61 and
@@ -542,7 +556,7 @@ approach cannot address:
   stale-buffer exploit is *equal* over the reals (the output is a buffer nobody
   wrote).
 - **Hardware corroboration** before a FAIL is reported.
-- **AC normal form before any solver**, which decides 257 of 272 value questions
+- **AC normal form before any solver**, which decides 257 of 277 value questions
   with no solver call at all; one Volta call per output *shape* rather than per
   output element; and, where Volta's canonicalisation blows up, Mirage's
   random-point evaluation over a finite field in front of it rather than a bigger

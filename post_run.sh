@@ -9,13 +9,13 @@ cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 "$PY" -m tvj.judge.record require-clean || exit 1
 KB=$("$PY" -c "
 from tvj.judge import record
-print(','.join(str(r['i']) for r in (record.load('kb') or []) if r['verdict'] not in ('PASS', 'FAIL')))")
+print(','.join(str(r['i']) for r in (record.load('kb') or []) if r['verdict'] not in ('PASS', 'FAIL', 'PASS-ASSUMING')))")
 echo "re-judging $(echo $KB | tr ',' '\n' | wc -l) KernelBook rows"
 "$PY" -u -m tvj.judge.kernelbook_run --rows "$KB" > results/kb_rejudge.log 2>&1
 
 TR=$("$PY" -c "
 from tvj.judge import record
-print(','.join(str(r['i']) for r in (record.load('traces') or []) if r['verdict'] not in ('PASS', 'FAIL')))")
+print(','.join(str(r['i']) for r in (record.load('traces') or []) if r['verdict'] not in ('PASS', 'FAIL', 'PASS-ASSUMING')))")
 echo "re-judging $(echo $TR | tr ',' '\n' | wc -l) trace rows"
 "$PY" -u -m tvj.judge.traces_run --rows "$TR" > results/tr_rejudge.log 2>&1
 

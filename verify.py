@@ -180,12 +180,12 @@ claim("delegate_test.py", "delegated library ops: the two spellings share a symb
        r"INERT     below the threshold nothing is delegated",
        r"FALLBACK  two symbols that differ are cashed in.*Volta proves equal",
        r"FALLBACK  expansion is refused above the budget"])
-claim("report.py", "the three-stage value split is what the corpus record says: AC 257, Volta 14, Volta+Z3 1",
-      [r"value decided by:\s+\{'AC': 257, 'Volta': 14, 'Volta\+Z3': 1\}",
+claim("report.py", "the value split is what the corpus record says: AC 257, pit 5, Volta 14, Volta+Z3 1",
+      [r"value decided by:\s+\{'AC': 257, 'pit': 5, 'Volta': 14, 'Volta\+Z3': 1\}",
        r"the interesting cell: tolerance PASSES and the judge rejects -> 5"], args=("both",))
-claim("directives.py", "a counterexample yields an axis for 26 of the 37 FAILs, and only a point for 11; poison-output never fires on a natural corpus",
-      [r"37 FAILs over both corpora", r"KernelBook\s+an axis for 18 of 28",
-       r"LLM traces\s+an axis for 8 of 9", r"both\s+an axis for 26 of 37",
+claim("directives.py", "a counterexample yields an axis for 31 of the 43 FAILs, and only a point for 12; poison-output never fires on a natural corpus",
+      [r"43 FAILs over both corpora", r"KernelBook\s+an axis for 22 of 33",
+       r"LLM traces\s+an axis for 9 of 10", r"both\s+an axis for 31 of 43",
        r"poison-output\s+0\s+<- never on a natural corpus"])
 claim("relcompare.py", "a generated check has to see the row it came from: the relative comparison catches every trial where the harness's absolute one is blind, and stays silent on every PASS row",
       [r"relative catches every trial and absolute is blind on every row: ok",
