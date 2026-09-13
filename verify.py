@@ -141,7 +141,7 @@ claim("kernelbook_run.py", "KernelBook rows 0-40: >=28 PASS all with tol=True; e
 # tolerance test compares garbage with garbage and its verdict depends on whatever
 # the allocator left behind -- True here, False in a fresh clone.  That is the
 # finding; pinning it would make the claim depend on the nondeterminism it documents.
-claim("kernelbook_run.py", "KernelBook row 17: judge FAILs with a numeric witness the GPU reproduces, where the dataset's own tolerance test is vacuous (uninitialised params, flagged DEGEN)",
+claim("kernelbook_run.py", "KernelBook row 17: judge FAILs with a numeric witness the GPU reproduces, where the tolerance test is vacuous (uninitialised params, flagged DEGEN)",
       [r"\[ 17\] FAIL\s+tol=\S+\s+DEGEN\s+GatSymAttention\s+\d+ outputs differ; "
        r"witness spec=\S+ kernel=\S+; GPU reproduces at"],
       args=("--rows", "17"), tag="gpu")
@@ -209,7 +209,7 @@ claim("harness_fixes.py", "honest counterpoint: how much of this a cheap harness
       [r"poisoned with NaN before the trial: False -> tolerance test PASSES",
        r"poisoned with NaN before the trial: True  -> tolerance test FAILS",
        r"the honest kernel still passes under poisoning: True"], tag="gpu")
-claim("testgen_validate.py", "an axis generalises where a point does not: two directives, each derived from one exploit, catch all 7 -- and the corpus' own check catches none of them; and the source `emit` writes for every directive kind runs",
+claim("testgen_validate.py", "an axis generalises where a point does not: two directives, each derived from one exploit, catch all 7 -- and the tolerance test catches none of them; and the source `emit` writes for every directive kind runs",
       [r"4/4 emitted checks run",
        r"7/7 exploits caught by two directives",
        r"-> 4/4 caught by one directive", r"-> 3/3 caught by one directive",

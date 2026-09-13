@@ -81,7 +81,7 @@ def classify(recs, total=None):
     out = collections.Counter()
     # A row with no record at all is not zero rows.  `run_resume.sh` steps over one
     # that hangs, and leaving it out of the denominator would quietly inflate every
-    # other number -- KernelBook row 372 is exactly this.
+    # other number -- KernelBook row 372 was one.
     if total is not None and len(recs) < total: out[HANG] = total - len(recs)
     for rec in recs:
         lab = bucket_of(rec)
@@ -152,8 +152,8 @@ if __name__ == "__main__":
             print(f"  {t}:")
             for k, n in by.most_common(): print(f"    {n:3}  {k}")
     # Is the bucket NEUTRAL -- rows we happened not to reach -- or is it enriched in
-    # rows that were going to disagree?  The corpus records its own tolerance verdict
-    # for every row, so this is a question with an answer rather than a worry.  A
+    # rows that were going to disagree?  The run record holds the tolerance test's
+    # verdict for every row, so this is a question with an answer rather than a worry.  A
     # kernel that is wrong AND expensive to canonicalise is reported UNKNOWN, not
     # FAIL, which is the silent direction; if that were happening we would expect
     # exactly this signal.
@@ -168,7 +168,7 @@ if __name__ == "__main__":
         pv = sum(math.comb(a + b, x) * math.comb(c + d, a + c - x) / math.comb(n, a + c)
                  for x in range(a, min(a + b, a + c) + 1))
         r1, r2 = a / (a + b), c / max(dn and len(dn), 1)
-        print(f"  {t}: {a} of {a+b} capped rows fail the corpus' own tolerance test "
+        print(f"  {t}: {a} of {a+b} capped rows fail the tolerance test "
               f"({100*r1:.0f} %), against {c} of {len(dn)} decided ({100*r2:.1f} %)"
               + (f" -- {r1/r2:.1f}x, Fisher p={pv:.3f}" if r2 else "")
               + (f"; rows {[x['i'] for x in cf]}" if cf else ""))

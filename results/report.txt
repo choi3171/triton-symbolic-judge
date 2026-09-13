@@ -53,7 +53,7 @@ obligations
   trusted extern calls:  224 rows, 674 calls
   torch tail replayed:   0 rows
   non-deterministic:     7 rows
-  degenerate parameters (the corpus' own tolerance test is vacuous): 10 rows
+  degenerate parameters (the tolerance test is vacuous): 10 rows
 
 where the time goes (seconds, per row)
   kernel -> terms  total     695   median   0.15   p90    1.2   max    77.8   (n=376)

@@ -52,8 +52,8 @@ except ImportError: INV = {v: k for k, v in RANK.items()}
 # rather than the method's -- the Limits section says so, and says a generator can
 # steer a kernel into them.  Both are knobs so that claim can be tested rather than
 # asserted: raise them on a machine with the memory and the rows the caps were
-# holding come back with a verdict.  Six of the fifteen KernelBook rows that hit one
-# fail their own tolerance test, which is why it is worth knowing what they say.
+# holding come back with a verdict.  tvj/measure/limits.py measures whether the rows
+# that hit one fail the tolerance test more often than decided rows do.
 BUDGET = int(os.environ.get("TVJ_VOLTA_BUDGET", 200_000_000))
 # Ops whose OUTPUT IS the random draw, so lifting it to an input role is sound.
 # The distinction matters: `native_dropout` returns (result, mask) and the mask is
@@ -82,10 +82,10 @@ Z3_PRUNE_REL = float(os.environ.get("TVJ_Z3_PRUNE_REL", 1e-4))
 # The same bar for the VALUE obligation's witness point, and relative for the same
 # reason.  It was absolute (`max|a-b| > 1e-4`), which is the exact measure this
 # project's own headline finding is about: KernelBook row 308 hides a 190 % relative
-# error under `atol=1e-3` because its output is ~1e-4, so an absolute gate would
-# downgrade that FAIL to UNKNOWN for the benchmark's reason.  It cuts the other way
-# too -- at outputs of ~1e8 an absolute 1e-3 is below float32's own spacing and says
-# nothing.  Scaled by the REFERENCE's magnitude, not the kernel's, so a kernel whose
+# error under the tolerance test's `atol=1e-2` because its output is ~1e-4, so an
+# absolute gate would downgrade that FAIL to UNKNOWN for the benchmark's reason.  It
+# cuts the other way too -- at outputs of ~1e8 an absolute 1e-4 is below float32's
+# own spacing and says nothing.  Scaled by the REFERENCE's magnitude, not the kernel's, so a kernel whose
 # answer is garbage of a large magnitude cannot dilute its own error.
 VAL_GATE_REL = 1e-4
 FATAL = ("overflow", "div-by-zero")          # precondition flags that make a result meaningless
@@ -180,10 +180,8 @@ def make_probe(cand):
     negates them (KernelBench-Verified's own mitigation), `gpu_confirm` draws from
     U[-1,1], and a witness point is whatever the solver returned.  So run the
     reference on the CPU first, where the same condition raises an ordinary,
-    catchable RuntimeError, and only then touch the GPU.
-
-    16 of 400 KernelBook rows and 2 of 156 trace rows are within reach of one of
-    these asserts."""
+    catchable RuntimeError, and only then touch the GPU.  `assert_risk` names what
+    in a reference could raise one."""
     try:
         cpu = copy.deepcopy(cand.model).cpu()
     except Exception as e:
@@ -314,7 +312,8 @@ def sym_domain(*term_lists):
 
 
 def tolerance(ref_fn, cand_fn, mk_inputs, trials=5, flip=False, atol=1e-2, rtol=1e-2, probe=None):
-    """The corpus' own kind of check, plus its sign-flip mitigation.
+    """The tolerance test: `allclose` with KernelBench's fp32 thresholds on `torch.rand`
+    inputs, plus KernelBench-Verified's sign-flip mitigation.
     Returns (ok, worst, err); ok is None when the comparison could not run."""
     ok, worst, ran = True, 0.0, 0
     for t in range(trials):
@@ -752,8 +751,8 @@ def judge(cand, timeout=150, tol_trials=5):
             # outputs are a handful of shapes over different leaves, and Volta treats
             # a leaf as an opaque variable, so pairs with the same joint shape are one
             # question up to renaming and share a verdict.  Measured in
-            # measure/lanes.py: 2048 attention lanes are 2 shapes, and the pair that
-            # exceeded the 4 GB cap lane by lane decides in 0.14 GB.  TVJ_LANES=0 sends
+            # measure/lanes.py: 1024 matmul lanes are one shape and so are 512 attention
+            # lanes, and the pair that exceeded the 4 GB cap lane by lane decides in 0.14 GB.  TVJ_LANES=0 sends
             # every lane, as before.
             if os.environ.get("TVJ_LANES", "1") != "0":
                 from tvj.measure import lanes
@@ -775,9 +774,9 @@ def judge(cand, timeout=150, tol_trials=5):
                 if r is True: decided_by[g] = "Volta"
             # Stage 2b: what Volta could not canonicalise -- a cap, the term-op budget,
             # the wall clock -- goes to evaluation at random points over a field
-            # (measure/pit.py).  The corpus rows in the caps bucket are all DEPTH: row 97
-            # is 256 lanes of 2 shapes and each representative alone exceeds the budget,
-            # so grouping cannot reach them and canonicalising cannot either.  pit's
+            # (measure/pit.py).  Rows 61 and 97 are the measured cases: one output's
+            # rational normal form is ~1e6 and ~1e11 monomials (measure/nf_rat.py), so
+            # grouping cannot reach them and canonicalising cannot either.  pit's
             # "equal" is probabilistic (error <= (d/2^61)^3 per pair) and is recorded as
             # such; its "differ" is weaker than the procedure's and falls through to the
             # stages below exactly as an AC mismatch does.  On by default -- it turned rows

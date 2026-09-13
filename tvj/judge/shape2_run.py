@@ -4,8 +4,8 @@ The first input of every row whose get_inputs() shape could be read (155 of 155)
 has at most 1024 elements, and 95 of the 156 kernels take the element count at
 runtime.  So most PASS rows in results/triton_traces.jsonl are proofs at one
 partial block; for a 1-D kernel with BLOCK >= 1024 the grid is 1, pid is 0 in
-every program, and the pid arithmetic is not exercised.  This run tiles every tensor input's leading
-dimension to the smallest odd m with m * inner > 2048 -- for [4,4,4,4] that is
+every program, and the pid arithmetic is not exercised.  This run sets every
+tensor input's leading dimension to the smallest odd m with m * inner > 2048 -- for [4,4,4,4] that is
 m = 33, numel 2112 = 8 * 256 + 64, at least two blocks and a tail for any BLOCK
 from 128 to 2048 -- and judges the same kernel against the same reference there.
 

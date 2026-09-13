@@ -2,7 +2,7 @@
 
 Each is a plausible optimisation, not a random defect: it makes the kernel
 faster and it passes a tolerance test on benign inputs.  The question is
-whether the three obligations separate them from the reference.
+whether the obligations separate them from the reference.
 """
 import triton, triton.language as tl
 

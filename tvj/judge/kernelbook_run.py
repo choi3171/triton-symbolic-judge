@@ -47,8 +47,8 @@ def import_triton_code(src, tag):
 
 
 def build(r):
-    """Row -> Candidate.  Also records the two facts that make a KernelBook row's
-    own tolerance test vacuous: parameters that did not transfer to `ModelNew`,
+    """Row -> Candidate.  Also records the two facts that make the tolerance test
+    vacuous on a KernelBook row: parameters that did not transfer to `ModelNew`,
     and parameters that are uninitialised (so both sides compare garbage)."""
     rec = {"name": r["entry_point"], "repo": r["repo_name"], "i": r.get("i", 0)}
     ns = {}; exec(r["python_code"], ns)

@@ -4,8 +4,8 @@ Generated code only has to expose `launch(*inputs) -> output`.  We hook
 `JITFunction.run`, so every `kernel[grid](...)` inside it is recorded (kernel,
 grid, args, constexprs) while still executing on the GPU -- one call yields
 both the tolerance-test output and everything the symbolic judge needs.
-Tensors are mapped to roles (input names / "out") by object identity, so the
-kernel's parameter names are irrelevant.
+Tensors are mapped to roles (input names / "out") by storage base plus element
+offset, so the kernel's parameter names are irrelevant.
 """
 import torch, triton
 from triton.runtime.jit import JITFunction

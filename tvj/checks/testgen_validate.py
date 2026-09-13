@@ -14,7 +14,7 @@ Two axes have enough exploits in this corpus to test:
                    magnitude rather than a point.  Any kernel that spells a
                    saturating function through raw exponentials should fall.
 
-The control in both cases is the corpus' own check, unmodified: if that already
+The control in both cases is the tolerance test, unmodified: if that already
 catches the row, the directive proved nothing.
 """
 import json, sys
@@ -26,7 +26,8 @@ ROWS = [r for r in json.load(open("data/triton_traces.json")) if r["source"] == 
 
 
 def run_under(i, vary_params=False, shift=0.0, poison=False, trials=5):
-    """The corpus' own tolerance check, plus whichever directives are switched on.
+    """The tolerance test (`allclose(atol=rtol=1e-2)` on `torch.rand`), plus whichever
+    directives are switched on.
     True = the candidate still passes (the check did NOT catch it)."""
     r = ROWS[i]; ns = {}
     try:

@@ -4,8 +4,8 @@
 row.  The distinction that matters is between a POINT -- the concrete witness,
 which a policy steps around -- and an AXIS, which closes every kernel of that
 shape.  This counts which of the two the corpora actually produce, because the
-answer is not what a small sample suggested: on the LLM corpus alone 8 of 9 FAILs
-name an axis, and over both corpora together it is 26 of 37.
+answer is not what a small sample suggested: on the LLM corpus alone 9 of 10 FAILs
+name an axis, and over both corpora together it is 34 of 46.
 
 What separates them is the shape of the defect.  `vary-parameter` and
 `vary-input` are named by buffers the reference reads and the kernel does not, so

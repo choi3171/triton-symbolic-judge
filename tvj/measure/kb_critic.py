@@ -3,9 +3,9 @@
 The generated wrapper permutes tensors among roles that share a shape, so
 `call()` receives linear2.weight where it expects the first cat operand and the
 action tensor where it expects linear2.weight.  Every one of them is (4,4), so
-`assert_size_stride` passes.  The dataset's own tolerance test misses it because
-`linear3` is initialised to U(-0.003, 0.003): all outputs are ~1e-4, and the
-`atol=1e-3` in allclose swallows a 190% relative error.
+`assert_size_stride` passes.  The tolerance test misses it because `linear3` is
+initialised to U(-0.003, 0.003): all outputs are ~1e-4, below its `atol=1e-2`,
+and even `allclose(rtol=1e-3, atol=1e-3)` swallows a 190% relative error.
 """
 import json, torch, torch.nn.functional as F
 from tvj.judge.kernelbook_run import import_triton_code, first
@@ -31,7 +31,7 @@ print("row 308 Critic, random point in [-1,1]:")
 print(f"  |CriticNew - cat([W2,state]) @ ... @ action.T |  = {float((got-scrambled).abs().max()):.3g}   <- attributed")
 print(f"  |CriticNew - the module it claims to compute  |  = {float((got-intended).abs().max()):.3g}")
 
-# --- why the dataset's tolerance test passes ---
+# --- why the tolerance test passes ---
 torch.manual_seed(0); m2 = ns["Critic"](*ia, **ik).cuda().eval()
 torch.manual_seed(0); mn2 = ns2["CriticNew"](*ia, **ik).cuda().eval(); mn2.load_state_dict(m2.state_dict())
 torch.manual_seed(1); xs = [x.cuda() for x in ns["get_inputs"]()]

@@ -1,11 +1,11 @@
 """Decide equality by evaluating at random points, instead of by normalising.
 
 The judge's expensive case is not a big term graph.  KernelBook row 61's output
-element is 679 nodes and canonicalising ONE of them exceeds 3 GB: what blows up
-is the normal form -- expanding a product of sums into a sum of products is
-exponential in the number of distinct denominators one output sums (Volta adds
-fractions by multiplying denominators), and nearly independent of the input's size;
-see measure/nf_rat.py.
+element is 679 nodes and canonicalising ONE of them exceeds Volta's 4 GB cap: what
+blows up is the rational normal form.  Volta adds fractions with different
+denominators by multiplying the denominators, so an output that sums several
+softmax rows grows exponentially in their number, nearly independently of the
+input's size; see measure/nf_rat.py.
 
 Schwartz-Zippel says you never needed the normal form.  A non-zero polynomial of
 total degree d, evaluated at a point drawn uniformly from S^n, is zero with
@@ -22,9 +22,10 @@ else in Z_p, with exp(x) = w^x.  Then
 
 holds because the FIELD says so, not because anything derived it -- which is
 exactly the identity flash attention's telescoping rescale needs and the one
-Volta spends gigabytes canonicalising.  The encoding covers one exp on an input-to-output path exactly; a second,
-nested one becomes an opaque atom (see `_eval`), which keeps equality decidable
-and gives up only the exp identities at that inner level.
+Volta spends gigabytes canonicalising.  The encoding covers one exp on an
+input-to-output path exactly; a second, nested one becomes an opaque atom (see
+`_eval`), which keeps equality decidable and gives up only the exp identities at
+that inner level.
 
 `max`, `min` and everything else outside the theory become opaque atoms keyed by
 term identity, which is what Volta does with them too.  Because both sides are
@@ -39,8 +40,9 @@ What this buys and what it costs:
                          than "not equal" -- two atoms can be equal for a reason
                          this cannot see
 
-so a disagreement must fall through to the real decision procedure, exactly as an
-AC mismatch does today.  It is a filter in front of Volta, not a replacement.
+so a disagreement falls through to the stages after this one (Z3 case splits,
+the numeric witness), exactly as an AC mismatch does.  The judge runs it on what
+Volta could not decide, not in place of Volta.
 
     python3 -m tvj.measure.pit [L]
 """

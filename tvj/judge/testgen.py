@@ -40,8 +40,8 @@ judge's own hardware gate uses -- scaled by the reference's magnitude.
 """
 import json, textwrap
 
-# What the corpora's own correctness checks compare with; `judge.tolerance` mirrors
-# it.  Named here because `compare-relative` exists to answer "can THAT see this?".
+# What KernelBench's fp32 correctness check compares with; `judge.tolerance` uses
+# the same thresholds.  Named here because `compare-relative` exists to answer "can THAT see this?".
 HARNESS_ATOL = HARNESS_RTOL = 1e-2
 # The bar the judge's hardware gate uses (judge.VAL_GATE_REL), inlined rather than
 # imported so a generated check has no dependency on the judge.

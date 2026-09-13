@@ -9,7 +9,7 @@ hardware gate uses.  This measures both sides of that swap, because a comparison
 that catches everything is worth nothing:
 
   sensitivity  the FAILs whose record says absolute cannot see them -- read from
-               the record, not listed here -- run at the corpus' own seeds
+               the record, not listed here -- run at the tolerance test's seeds
                (`torch.manual_seed(200 + t)`, `torch.rand`)
   specificity  rows the judge PASSes, where a relative bar must stay silent
 

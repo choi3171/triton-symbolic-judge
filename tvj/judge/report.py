@@ -94,7 +94,7 @@ def report(key):
     print(f"  torch tail replayed:   {sum(1 for r in recs if r.get('tail'))} rows")
     print(f"  non-deterministic:     {sum(1 for r in recs if r.get('det') is False)} rows")
     if any(r.get("degenerate_params") for r in recs):
-        print(f"  degenerate parameters (the corpus' own tolerance test is vacuous): "
+        print(f"  degenerate parameters (the tolerance test is vacuous): "
               f"{sum(1 for r in recs if r.get('degenerate_params'))} rows")
 
     print("\nwhere the time goes (seconds, per row)")
