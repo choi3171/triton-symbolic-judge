@@ -31,21 +31,9 @@ class Range:
         self.flags = tuple(flags)
     def __repr__(self): return f"[{self.lo:.3g}, {self.hi:.3g}]"
 
-# A running max is initialised with a stand-in for -infinity -- `-1e30`,
-# `-3.4e38`, `float("-inf")` -- and terms.app already folds the exact -inf away.
-# A finite one survives into the term, and it broke both relational rules below:
-# `x in S` and `leaves(M) <= xs` both saw an extra member.  LLM row 50's kernel
-# then read as dividing by a sum bounded below by 0 -- a precondition FAIL at
-# |in| <= 41.8 that the reference, identical but for the sentinel, did not have.
-SENTINEL = -1e30
-
-def _max_leaves(t, acc, drop_below=SENTINEL):
-    """The leaves of a (nested) max, without constants at or below `drop_below`.
-    For R1 that is always sound: adding a member to a max cannot make x - max(S)
-    positive.  R2 needs more -- see `_softmax_denominator`."""
+def _max_leaves(t, acc):
     if isinstance(t, T.App) and t.fn == "max":
-        for a in t.args: _max_leaves(a, acc, drop_below)
-    elif isinstance(t, T.Const) and t.v <= drop_below: pass
+        for a in t.args: _max_leaves(a, acc)
     else: acc.add(t)
     return acc
 
@@ -98,13 +86,18 @@ def _softmax_denominator(t, lo_of=None):
     """Add whose args are all exp(k*x_j - k*M) with one k, one M, {x_j} covering leaves(M).
 
     The conclusion, sum >= 1, needs one term to be exp(0): some x_j must ATTAIN M.
-    A sentinel constant c in M would defeat that only if c exceeded every x_j.  So
-    c is dropped from leaves(M) exactly when the analysis's own lower bound for
-    every non-constant member of M is above c -- `lo_of(term)` is that bound, and
-    it is the caller's (`Analysis.range`), at the input range being analysed.
-    Without `lo_of` nothing is dropped.  Below every member's bound the sentinel
-    IS the max, every term underflows, and the division really is by ~0: that is
-    a precondition of the kernel, not an artifact, and it is kept."""
+    A CONSTANT member c of M -- a running max is initialised with a stand-in for
+    -infinity, `-1e30` or `-3.4e38`, and terms.app folds away only the exact -inf
+    -- would defeat that if it exceeded every x_j.  So c is left out of leaves(M)
+    exactly when the analysis's own lower bound for every non-constant member is
+    above c: then c cannot be the max, whatever it was meant to mean.  `lo_of` is
+    that bound, the caller's (`Analysis.range`) at the input range being analysed;
+    without it nothing is dropped.  No threshold is involved: `max(5, x_j...)`
+    gets the same treatment, and is right both ways -- with inputs in [-10, 10]
+    the 5 can be the max and the rule stays silent; in [6, 10] it cannot.  When a
+    constant CAN be the max, every term underflows and the division really is by
+    ~0: that is a precondition of the kernel, not an artifact, and it is kept.
+    LLM row 50 read as overflowing at |in| <= 41.8 before this, its reference not."""
     if not isinstance(t, T.Add): return False
     xs, M, K = set(), None, None
     for a in t.args:
@@ -115,14 +108,14 @@ def _softmax_denominator(t, lo_of=None):
         elif m is not M or k != K: return False
         xs.add(x)
     if M is None: return False
-    members = _max_leaves(M, set(), drop_below=float("-inf"))        # everything, sentinels included
+    members = _max_leaves(M, set())                                    # everything, constants included
     consts = [m for m in members if isinstance(m, T.Const)]
     if consts:
         if lo_of is None: return False                                  # no context: keep the sentinel
         real = [m for m in members if not isinstance(m, T.Const)]
         if not real: return False
         bound = min(lo_of(m) for m in real)                             # every genuine member is above this
-        if not all(c.v <= SENTINEL and c.v < bound for c in consts): return False
+        if not all(c.v < bound for c in consts): return False
         members = set(real)
     return members <= xs
 
