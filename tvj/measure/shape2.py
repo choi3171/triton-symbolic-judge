@@ -9,8 +9,8 @@ results/triton_traces_shape2.jsonl (shape 2: leading dimension set to an odd m
 with m * inner > 2048, tvj/judge/shape2_run.py).  What the join answers:
 
   * how many kernels PASS at the shape the corpus tests and FAIL, or crash, at a
-    shape with two or more blocks and a tail -- and whether the corpus' own
-    tolerance test at shape 2 would have noticed;
+    shape with two or more blocks and a tail -- and whether the tolerance test
+    at shape 2 would have noticed;
   * how many launches at shape 1 could have had a single program.  Shape 1
     records predate the `grids` field, so this is read off shape 2: a launch
     whose shape-2 grid is (1,1,1) was (1,1,1) at shape 1 too, and a launch with

@@ -20,8 +20,9 @@ heads on row 97, and 4 softmax rows over different slices of one input on row
 61 (a single-head module).  So the common denominator has 4^4 = 256 terms and
 the equality check about 10^6 monomials per output on row 61, 10^11 on row 97.
 The paper's argument that blowup "does not happen in practice" is about
-multiplicative depth; this arrives through division, at depth 1.  Evaluation at random points (measure/pit.py) never forms
-the fraction and decides these rows in milliseconds.
+multiplicative depth; this arrives through division, at depth 1.  Evaluation
+at random points (measure/pit.py) never forms the fraction, and separates these
+rows in milliseconds.
 """
 import copy, json, sys
 from collections import Counter

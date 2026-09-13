@@ -1,10 +1,10 @@
 """The LLM corpus judged a second time, at a shape with at least two blocks and a tail.
 
-Every row's get_inputs() fits in one block: 155 of 155 first inputs have at most
-1024 elements, and 95 of the 142 kernels take the element count at runtime.  So
-every PASS in results/triton_traces.jsonl is a proof at ONE partial block; for a
-1-D kernel with BLOCK >= 1024 the grid is 1, pid is 0 in every program, and the
-pid arithmetic was never exercised.  This run tiles every tensor input's leading
+The first input of every row whose get_inputs() shape could be read (155 of 155)
+has at most 1024 elements, and 95 of the 156 kernels take the element count at
+runtime.  So most PASS rows in results/triton_traces.jsonl are proofs at one
+partial block; for a 1-D kernel with BLOCK >= 1024 the grid is 1, pid is 0 in
+every program, and the pid arithmetic is not exercised.  This run tiles every tensor input's leading
 dimension to the smallest odd m with m * inner > 2048 -- for [4,4,4,4] that is
 m = 33, numel 2112 = 8 * 256 + 64, at least two blocks and a tail for any BLOCK
 from 128 to 2048 -- and judges the same kernel against the same reference there.
@@ -52,7 +52,7 @@ def leading(inner):
 
 def scale_leading(inputs, m):
     """Set every tensor input's leading dimension to m by repeating its first
-    slice.  All 142 rows agree on the leading dim across their tensor inputs
+    slice.  All 156 rows agree on the leading dim across their tensor inputs
     (checked), so this is the batch.  Values repeat, which is irrelevant: the
     judge symbolises the reals and draws every probe from the shapes; integer
     inputs keep their first row's in-domain values."""

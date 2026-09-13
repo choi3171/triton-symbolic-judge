@@ -3,8 +3,7 @@
 `reward_hacking.txt` takes the hacks the literature documents (Sakana, KBV) and
 measures them against the obligations.  This is the other direction: take each
 obligation, each gate and the reward policy, and ask what a generator rewarded
-on the judge's verdict would learn to do.  Written 2026-09-14 against commit
-b6b519a plus the shape-2 run.
+on the judge's verdict would learn to do.
 
 A generator gets paid in three ways, and they are different problems:
 
@@ -22,12 +21,12 @@ specific.  B is where the volume is, and it is decided by policy, not code.
 Real-number identity, decided by AC / lanes / Volta / pit / Z3 / witness, with the
 witness corroborated on the GPU at relative 1e-4.
 
-- **V1  One shape.**  The theorem is at get_inputs()'s shape.  Every LLM-corpus
-  input fits in one block, so pid arithmetic and multi-block tails were never
-  exercised; a kernel correct only there PASSes.  Measured on the LLM corpus at
-  two blocks and a tail (`tvj/measure/shape2.py`): 0 of 89 PASS rows moved, so no
-  kernel there exploits it -- which says nothing about a generator rewarded at one
-  shape.  The fix that changes the theorem is N symbolic within a block-count band.
+- **V1  One shape.**  The theorem is at get_inputs()'s shape.  In the LLM
+  dataset the first input of every row fits in one block, so pid arithmetic and
+  multi-block tails are mostly not exercised; a kernel correct only there PASSes.
+  Re-judged at two blocks and a tail (`tvj/measure/shape2.py`), all 89 PASS rows
+  that could be re-judged stay PASS, so no kernel there exploits it.  That says
+  nothing about a generator rewarded at one shape.  The fix that changes the theorem is N symbolic within a block-count band.
 - **V2  Fixed integer data** (once integer inputs are concretised from the probe;
   today they are refused).  A kernel that hard-codes the probe's index pattern
   PASSes "for all real inputs at this index data".  Fresh draws per judgement are
@@ -52,11 +51,11 @@ witness corroborated on the GPU at relative 1e-4.
   PASS is uncorroborated.  The only outside check such a PASS gets is the cell
   "judge PASS, tolerance FAIL": a handler bug that passes a wrong kernel shows up
   there when the tolerance test happens to catch the kernel.  That cell is empty
-  in both corpora today; it is the first thing to read after every re-run.
+  in both datasets, and it is the first thing to read after every re-run.
   `spec_agree` (113 cases) is the standing defence; it needs a case per new
   handler.
-- **V6  pit's coin.**  False "equal" with probability about 2^-61 per query.  Not
-  a hack.
+- **V6  pit's coin.**  False "equal" with probability at most (d/2^61)^3 per
+  pair.  Not a hack.
 
 ## Memory
 
@@ -131,21 +130,21 @@ the GPU.
   while dropping the same units every call.  Nothing checks that the draw varies.
   One check closes it: the kernel's rng buffers must differ between two runs.
 - **G1  The 1e-4 gate** exists so that a spec bug cannot manufacture a FAIL.  It
-  also defines the judge's operational notion of "different" (see V4); that
-  number should be in the README next to the word "mathematical".
+  also defines the judge's operational notion of "different" (see V4), so it
+  belongs next to any statement that a FAIL means the two differ mathematically.
 
 ## Policy: what UNKNOWN is worth
 
 Every B-type hack is a policy question.  The steerable buckets are measured
-(`tvj.measure.limits`: 6.0 % of KernelBook, 12.2 % of the LLM corpus) and each
+(`tvj.measure.limits`: 6.0 % of KernelBook, 12.2 % of the LLM dataset) and each
 is reachable on purpose:
 
 - refused constructs: a data-dependent `scf.if` on a float comparison, `fptosi`,
   an integer loaded from memory -- one line of Triton each;
 - the caps: term budget, Volta's 60 s, the row alarm.  Every one is reached by
   making the kernel bigger, which a speed reward opposes, except normal-form
-  blowups that cost the kernel nothing (pit closes the exp ones; `pow` chains and
-  wide piecewise `where` ladders still reach Z3's budget);
+  blowups that cost the kernel nothing (pit closes the exp ones; whether `pow`
+  chains or wide piecewise `where` ladders reach Z3's budget is not measured);
 - the unreproduced witness (V4) and the downgraded precondition (PR1), which
   cost the kernel nothing and make it faster.
 
