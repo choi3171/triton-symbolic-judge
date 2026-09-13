@@ -1,85 +1,61 @@
-# A symbolic judge for Triton kernels
+# Triton symbolic judge
 
-Checks a Triton GPU kernel against the PyTorch module it replaces by comparing
-the two as **expressions over symbolic inputs**, not by running both on sampled
-data. When they differ, it finds a concrete input where they do and confirms the
-difference on the GPU before reporting it.
+Checks a Triton kernel against the PyTorch module it replaces. Both sides are turned into expressions over symbolic inputs and compared, instead of being run on sampled inputs. When the values differ, the judge finds an input where they differ, and reports a FAIL only if the GPU shows the same difference there.
 
-The question behind it: LLM-generated GPU kernels that pass a tolerance test —
-are they actually correct?
+I started this to see whether LLM-generated Triton kernels that pass a tolerance test are actually correct.
 
 ```
 pip install -r requirements.txt
-./setup.sh            # fetch Volta, KernelBench and the corpora; build the bridge
-python3 verify.py     # re-run every claim in this repository; --all adds the slow three
+./setup.sh            # fetches Volta, KernelBench and the corpora, builds the bridge
+python3 verify.py     # re-runs every claim in this repo (--all adds the three slow ones)
 ```
 
-`PYTHON=/path/to/python` overrides the interpreter the shell scripts use.
+Set `PYTHON=/path/to/python` if the scripts pick the wrong interpreter.
 
-**Every number here comes from a script `verify.py` re-runs**, and the claim it
-checks is either the number itself or, where the last digits belong to the
-hardware, the property that number has to have. The few results that are
-hand-run say so where they appear. `python3 verify.py --help` explains the rest.
+Every measured number in this README comes from a script that `verify.py` runs and checks. Where the last digits depend on the GPU, the claim checks the property instead of the number. The few hand-run results say so where they appear.
 
-## What it found
+## Results
 
-Two public corpora, every row run:
+Two public corpora, all rows:
 
-| corpus | rows | judged | tolerance test passes, judge rejects |
+| corpus | rows | judged | tolerance test passes, judge FAILs |
 |---|---:|---:|---:|
-| [KernelBook](https://huggingface.co/datasets/GPUMODE/KernelBook), Inductor-generated Triton | 400 | 79 % | 6 |
-| [LLM-generated Triton](https://huggingface.co/datasets/ppbhatt500/kernelbook-triton-reasoning-traces) for KernelBook modules | 156 | 64 % | 9 |
+| [KernelBook](https://huggingface.co/datasets/GPUMODE/KernelBook), Inductor-generated Triton | 400 | 317 (79 %) | 6 |
+| [LLM-generated Triton](https://huggingface.co/datasets/ppbhatt500/kernelbook-triton-reasoning-traces) for KernelBook modules | 156 | 100 (64 %) | 9 |
 
-All 15 rejections are reproduced on the GPU at the input the judge found. None
-go the other way: in both corpora, no row fails the tolerance test and passes the
-judge.
+"Judged" means PASS, FAIL or PASS-ASSUMING. All 15 FAILs are reproduced on the GPU: value FAILs at the input the judge found, accuracy FAILs at the shifted inputs that triggered them. The other direction is empty. No row in either corpus fails the tolerance test and passes the judge.
 
-**One example: KernelBook row 308, `Critic`.** The generated wrapper passes
-tensors into the wrong roles. They are all `(4, 4)`, so the shape asserts are
-satisfied. The output is around 1e-4, and the benchmark's `atol=1e-3` hides a
-190 % relative error.
+Example, KernelBook row 308 (`Critic`). The generated wrapper passes tensors into the wrong roles. They are all `(4, 4)`, so `assert_size_stride` passes. The output is around 1e-4, so the benchmark's `atol=1e-3` hides a 190 % relative error.
 
-**A tolerance test can be unable to fail**, and the two corpora show three ways:
+In some rows the tolerance test could not have failed at all:
 
-| mechanism | evidence |
+| why the test cannot fail | rows |
 |---|---|
-| parameters left uninitialised — garbage compared against garbage | KernelBook row 17 |
-| output ~1e-4 under `atol=1e-3`, hiding a **190 % relative error** | KernelBook row 308 |
-| parameters default to the **identity element** of the op they feed (`bias=0`, `scale=1`), so a kernel that ignores them is bit-identical | 5 LLM-generated kernels, and KernelBench's own level2/85 |
+| parameters are uninitialized, so garbage is compared with garbage | KernelBook 17 |
+| the output is ~1e-4, and `atol=1e-3` hides a 190 % relative error | KernelBook 308 |
+| a parameter defaults to the identity of the op it feeds (`bias=0`, `scale=1`), so a kernel that ignores it gives the same bits | 5 LLM kernels, KernelBench level2/85 |
 
-The last survives KernelBench-Verified's hardening: its hidden tests vary the
-inputs four ways but build the model once, so a kernel with the scale multiply
-deleted passes all four at a max difference of exactly 0.
+The last one also gets past KernelBench-Verified's hidden tests. They vary the inputs four ways but build the model once, so a kernel with the scale multiply deleted passes all four with max difference 0 (`tvj/measure/kbv_blindspot.py`).
 
-Every rejected row, and why its benchmark missed it: [docs/findings.md](docs/findings.md).
+Every FAIL and what hid it: [docs/findings.md](docs/findings.md).
 
 ## How it works
 
-The reference side runs the module's unmodified `forward` on tensors whose
-elements are symbolic terms. The kernel side records the real GPU launches of
-the generated code and interprets their TTIR symbolically over the whole launch
-grid. Floating point is modelled as exact reals, so reassociation is free
-(split-K, flash attention and tree reductions all come out equal), and the two
-things reals cannot see get checks of their own.
+On the reference side, the module's own `forward` runs on tensors whose elements are symbolic terms. On the kernel side, `JITFunction.run` is hooked to record the real launches, and the TTIR of each launch is executed symbolically over its whole grid.
+
+Floats are modeled as real numbers, as in Volta. So reassociation is not a difference (split-K, flash attention and tree reductions all come out equal), and what real numbers cannot see needs separate checks:
 
 | check | question |
 |---|---|
-| **value** | the same real number? |
-| **memory** | does it read what nothing wrote, skip an output, or race with itself? |
-| **precision** | is it no less precise than the reference, e.g. no silent tf32? |
-| **precondition** | does the real-number proof still hold in float32? |
-| **accuracy** | the same expression, arranged so float32 loses digits? |
+| value | same real number? |
+| memory | does it read something no launch wrote, miss an output element, or race? |
+| precision | is it less precise than the reference, e.g. tf32 where the reference is fp32? |
+| precondition | does the real-number result still hold in float32, or does it overflow earlier? |
+| accuracy | same value, but arranged so that float32 loses more digits? |
 
-A determinism check runs first. Value is decided by an AC normal form, which
-settles most pairs with no solver, then [Volta](https://github.com/willtunnels/volta)'s
-decision procedure, Z3 for piecewise terms, and evaluation at random points over
-a finite field after [Mirage](https://arxiv.org/abs/2405.05751). A value or
-accuracy FAIL is reported only if the GPU reproduces it; otherwise the verdict
-is UNKNOWN. `PASS-ASSUMING` carries an assumption about the input data that the
-judge cannot discharge, such as distinct scatter indices.
+Before these, the kernel runs twice on the same inputs and must give the same bits. Value is decided in stages: AC normal form (most pairs end here, with no solver), [Volta](https://github.com/willtunnels/volta)'s decision procedure, Z3 case splits for piecewise terms, and evaluation at random points over a finite field following [Mirage](https://arxiv.org/abs/2405.05751). Value and accuracy FAILs are reported only if the GPU reproduces them, otherwise the verdict is UNKNOWN. `PASS-ASSUMING` is a PASS under an assumption about the input data that the judge cannot check, e.g. that scatter indices are distinct.
 
-The long version: [docs/how-it-works.md](docs/how-it-works.md). The data flow:
-[PIPELINE.md](PIPELINE.md).
+More in [docs/how-it-works.md](docs/how-it-works.md). The data flow is in [PIPELINE.md](PIPELINE.md).
 
 ## Limits
 
@@ -105,45 +81,31 @@ The long version: [docs/how-it-works.md](docs/how-it-works.md). The data flow:
 | the row hangs the judge and never returns a verdict        | —          | —          | no                             |
 | **the method genuinely cannot decide**                     | 1.5 %      | 8.3 %      | —                              |
 
-What this is not:
+Also:
 
-- **Shapes are fixed.** A verdict holds at the input shape given. Every input in
-  the LLM corpus has at most 1024 elements, so the corpus was re-judged at two
-  blocks and a tail: 0 of the 89 PASS rows changed.
-- **Data-dependent control flow is refused.** A branch on a value read from
-  memory has nothing symbolic to split. An index read from memory is handled by
-  expanding the read, or for a scatter, under the stated assumption that the
-  indices are distinct.
-- **The coverage describes these two corpora**: small GitHub modules and one-shot
-  model answers, not production kernels.
-- **Nothing here was written against the judge.** A policy trained on its
-  verdicts is a question this repository cannot answer yet.
-- **A PASS is only as good as the PyTorch-side translation.** It is tested
-  against torch on 113 cases, not proved, and nothing downstream checks it.
+- Shapes are fixed, and a verdict is for the row's input shape. Every input in the LLM corpus has at most 1024 elements, so that corpus was re-judged with two blocks and a tail. 0 of the 89 PASS rows changed (`tvj/measure/shape2.py`).
+- A branch on a value loaded from memory is refused. An index loaded from memory is handled by expanding the read (gather), or for a scatter, by assuming the indices are distinct.
+- The coverage numbers are for these two corpora. Both are small GitHub modules and one-shot model answers, not production kernels.
+- No kernel here was written against this judge. What a policy trained on its verdicts would do is not tested.
+- A PASS depends on the PyTorch-side translation being right. It is compared with torch on 113 cases, not proved, and nothing after it would catch a mistake.
 
-More: [docs/limits.md](docs/limits.md), and cost and the caps in
-[docs/caps.md](docs/caps.md).
+More in [docs/limits.md](docs/limits.md). Cost and the caps, including where Volta's normal form blows up, are in [docs/caps.md](docs/caps.md).
 
-## Further reading
+## Docs
 
 | | |
 |---|---|
-| [docs/how-it-works.md](docs/how-it-works.md) | the five checks, the hardware gate, and the PyTorch side |
-| [docs/findings.md](docs/findings.md) | every rejected row and what hid it |
-| [docs/testgen.md](docs/testgen.md) | turning a counterexample into a check a harness runs without the judge |
-| [docs/caps.md](docs/caps.md) | cost, the caps, and where Volta's normal form blows up |
-| [docs/limits.md](docs/limits.md) | what the method cannot do, and what has not been tested |
-| [docs/prior-work.md](docs/prior-work.md) | Gimlet Labs, Dr. Kernel, and the rest |
-| [results/reward_hacking_judge.md](results/reward_hacking_judge.md) | the checks read from the side of a generator trying to get past them |
+| [docs/how-it-works.md](docs/how-it-works.md) | the checks, the GPU gate, the PyTorch side |
+| [docs/findings.md](docs/findings.md) | every FAIL and what hid it |
+| [docs/testgen.md](docs/testgen.md) | turning a counterexample into a check a harness can run without the judge |
+| [docs/caps.md](docs/caps.md) | cost, the caps, and Volta's normal form |
+| [docs/limits.md](docs/limits.md) | what the method cannot do, and what is not tested |
+| [docs/prior-work.md](docs/prior-work.md) | Gimlet Labs, Dr. Kernel and others |
+| [results/reward_hacking_judge.md](results/reward_hacking_judge.md) | what a generator could do to get past each check |
 
 ## Prior work
 
-[Gimlet Labs](https://gimletlabs.ai/blog/formally-verifying-ai-generated-kernels)
-reached the same two decisions independently: read TTIR, and model floating
-point as reals. [Dr. Kernel](https://arxiv.org/abs/2602.05885) trains a policy to
-write Triton and reports that 3 % of its output still hacks past its own check.
-Volta and Mirage supply the decision procedures. What differs from each:
-[docs/prior-work.md](docs/prior-work.md).
+[Gimlet Labs](https://gimletlabs.ai/blog/formally-verifying-ai-generated-kernels) made the same two choices independently: read TTIR, and model floats as reals. [Dr. Kernel](https://arxiv.org/abs/2602.05885) trains a policy to write Triton and reports that 3 % of its Level 2 outputs still hack its own check. Volta and Mirage provide the decision procedures used here. The comparison is in [docs/prior-work.md](docs/prior-work.md).
 
 ## Layout
 
@@ -159,5 +121,4 @@ tvj/tools/     open one row and look at it       kb_debug  memcheck  traces_repr
 verify.py      re-runs all of the above and asserts every claim
 ```
 
-`tvj/judge/judge.py` is the whole judgement; the corpus runners are thin adapters
-over it.
+`tvj/judge/judge.py` is the whole judgement. The corpus runners are thin adapters around it.
