@@ -2,7 +2,7 @@
 
 ## Tolerance tests that cannot fail
 
-In some rows the corpus' tolerance test could not have failed at all. There are three ways this happens. Each was seen in a real corpus, and none was noticed by the benchmark running it:
+In some rows the dataset's tolerance test could not have failed at all. There are three ways this happens. Each was seen in a real dataset, and none was noticed by the benchmark running it:
 
 | why the test cannot fail | rows |
 |---|---|
@@ -12,16 +12,16 @@ In some rows the corpus' tolerance test could not have failed at all. There are 
 
 The last one also gets past KernelBench-Verified's hidden tests. They vary the inputs four ways (as-is, ×3, ×0.01, negated) but build the model once, so a kernel with the scale multiply deleted passes all four with max difference exactly `0` (`tvj/measure/kbv_blindspot.py`). Drawing the parameter at random finds it immediately.
 
-## Corpus results
+## Dataset results
 
-Rows where the corpus' own tolerance check passes and the judge FAILs. Every one is confirmed on the GPU before it is counted.
+Rows where the dataset's own tolerance check passes and the judge FAILs. Every one is confirmed on the GPU before it is counted.
 
-| corpus | judged | tolerance passes, judge FAILs |
+| dataset | judged | tolerance passes, judge FAILs |
 |---|---|---|
 | 400 Inductor-generated (KernelBook) | 79 % | 6, with GPU differences at the witness point of up to 7.3 × 10³ |
 | 156 LLM-generated Triton | 64 % | 9: 6 on value, 3 on accuracy |
 
-One of the 15 is counted only by luck. KernelBook row 17 leaves its parameters uninitialized, so the tolerance test compares garbage with garbage, and its result depends on what the allocator left behind: `True` on the run these numbers come from, `False` on the run before. The row is flagged `DEGEN` for this reason. LLM row 35 is just outside the count in the other direction: the corpus labels it correct, but its own tolerance check disagrees.
+One of the 15 is counted only by luck. KernelBook row 17 leaves its parameters uninitialized, so the tolerance test compares garbage with garbage, and its result depends on what the allocator left behind: `True` on the run these numbers come from, `False` on the run before. The row is flagged `DEGEN` for this reason. LLM row 35 is just outside the count in the other direction: the dataset labels it correct, but its own tolerance check disagrees.
 
 In all of them, the benchmark's inputs do not reach the difference.
 

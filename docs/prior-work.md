@@ -10,9 +10,9 @@ They state as a limitation that "differing use of floating point values can lead
 - GPU confirmation before a FAIL is reported.
 - AC normal form before any solver, which decides 257 of 277 value questions with no solver call. One Volta call per output shape instead of per output element. And where Volta's canonicalization blows up, Mirage's random-point evaluation over a finite field in front of it, instead of a bigger machine.
 - A counterexample becomes a harness check that runs without the judge.
-- Two corpora measured separately, 400 compiler-generated rows and 156 LLM-written ones, because they fail in different ways.
+- Two datasets measured separately, 400 compiler-generated rows and 156 LLM-written ones, because they fail in different ways.
 
-The two also keep the problem small in different ways. Gimlet truncates reductions, summing a few terms instead of all of them. This project shrinks shapes and keeps every reduction whole. Both make the term graph small, but they are different approximations: truncation can hide a defect that only appears past the cut. On 40 KernelBook rows with the cap at 4, 39 verdicts agree, and the one that differs is a PASS becoming UNKNOWN, not a missed defect (`tvj/measure/truncated.py`, hand-run, no `verify.py` claim). The reason is simple. These kernels reduce over 4–16 elements, so a cap of 4 barely matters. So the two choices are interchangeable on this corpus, not in general. A kernel whose bug is in the reduction would separate them, and neither corpus has one.
+The two also keep the problem small in different ways. Gimlet truncates reductions, summing a few terms instead of all of them. This project shrinks shapes and keeps every reduction whole. Both make the term graph small, but they are different approximations: truncation can hide a defect that only appears past the cut. On 40 KernelBook rows with the cap at 4, 39 verdicts agree, and the one that differs is a PASS becoming UNKNOWN, not a missed defect (`tvj/measure/truncated.py`, hand-run, no `verify.py` claim). The reason is simple. These kernels reduce over 4–16 elements, so a cap of 4 barely matters. So the two choices are interchangeable on this dataset, not in general. A kernel whose bug is in the reduction would separate them, and neither dataset has one.
 
 ## Dr. Kernel
 

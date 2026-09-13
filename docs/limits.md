@@ -23,15 +23,15 @@ Integers are concrete: Python `int`s with real two's-complement wraparound. That
 - The precondition check is interval-based and cannot see relations between values. Its three rules are specific to the softmax family. Underflow is flagged, not judged: a result that correctly rounds to zero in fp32 is harmless in absolute error and 100 % wrong in relative error, and which of those the spec means is a decision, not a fact.
 - Volta is used only as a decision procedure, `check_equivalent` over our own arena. Its race checking, its PTX front-end and the structured-CTA premise of its completeness proof are not carried over, so the soundness of this interpreter is argued informally, not proved.
 
-## These two corpora
+## These two datasets
 
-Both corpora are small GitHub modules and one-shot model answers. They under-represent production kernels, e.g. tensor-parallel collectives, MoE routing and paged attention, where symbolic addressing and dynamic shapes are normal. The coverage numbers describe the corpora, not the method.
+Both datasets are small GitHub modules and one-shot model answers. They under-represent production kernels, e.g. tensor-parallel collectives, MoE routing and paged attention, where symbolic addressing and dynamic shapes are normal. The coverage numbers describe the datasets, not the method.
 
 ## One shape per row
 
-Every input in the LLM corpus fits in one block: 155 of 155 first inputs have at most 1024 elements. So 123 of the 156 rows were judged with every launch as a single program. `pid` was 0 everywhere, and neither the arithmetic on it nor any tail past the first block was tested.
+Every input in the LLM dataset fits in one block: 155 of 155 first inputs have at most 1024 elements. So 123 of the 156 rows were judged with every launch as a single program. `pid` was 0 everywhere, and neither the arithmetic on it nor any tail past the first block was tested.
 
-The corpus was re-judged with the leading dimension set to an odd m with m·inner > 2048. For `[4,4,4,4]` that is 33, or 2112 elements, which gives at least two blocks and a tail for any BLOCK from 128 to 2048 (`tvj/judge/shape2_run.py`, `results/triton_traces_shape2.jsonl`). 0 of the 89 PASS rows changed verdict: no FAIL, no crash. 9 of the 10 FAILs stayed FAILs (`python3 -m tvj.measure.shape2`).
+The dataset was re-judged with the leading dimension set to an odd m with m·inner > 2048. For `[4,4,4,4]` that is 33, or 2112 elements, which gives at least two blocks and a tail for any BLOCK from 128 to 2048 (`tvj/judge/shape2_run.py`, `results/triton_traces_shape2.jsonl`). 0 of the 89 PASS rows changed verdict: no FAIL, no crash. 9 of the 10 FAILs stayed FAILs (`python3 -m tvj.measure.shape2`).
 
 Three verdicts moved, none of them a PASS:
 
@@ -39,11 +39,11 @@ Three verdicts moved, none of them a PASS:
 - One UNKNOWN timed out.
 - One UNKNOWN became NONDETERMINISTIC. Its race needs more than one program to show, and a single-program grid cannot show it.
 
-The corpus' own tolerance test at the small shape missed nothing here. A verdict is still for one shape. Two shapes agreeing is evidence about these kernels, not a proof about the next one.
+The dataset's own tolerance test at the small shape missed nothing here. A verdict is still for one shape. Two shapes agreeing is evidence about these kernels, not a proof about the next one.
 
 ## No adversary yet
 
-Nothing here has faced an adversary, and that is three separate claims. First, every kernel judged was written without knowledge of this judge: Inductor is a compiler, and the LLM corpus is a model answering in good faith. Second, kernels optimized against a different checker exist today: Dr. Kernel's policy is published, and 3 % of its output still hacks past its own check (see [prior-work.md](prior-work.md)). Third, a policy trained against this judge. This repository cannot answer that one, because it is about training dynamics, and judging kernels that already exist does not settle it.
+Nothing here has faced an adversary, and that is three separate claims. First, every kernel judged was written without knowledge of this judge: Inductor is a compiler, and the LLM dataset is a model answering in good faith. Second, kernels optimized against a different checker exist today: Dr. Kernel's policy is published, and 3 % of its output still hacks past its own check (see [prior-work.md](prior-work.md)). Third, a policy trained against this judge. This repository cannot answer that one, because it is about training dynamics, and judging kernels that already exist does not settle it.
 
 Asking it as a rate is expensive, and probably the wrong question. "Does putting the judge in the loop lower how often hacking happens" is a two-proportion test against a base rate of 2–3 %, which Dr. Kernel's numbers and the 15 of 556 rows in [findings.md](findings.md) both agree with. That needs roughly 1,500 judged rollouts per arm to resolve 3 % against 1.5 %, in two training runs (arithmetic, not a measurement). Hacking is also not stationary. It is near zero until a policy finds the exploit and not after, so a rate averages over the only interesting event.
 
