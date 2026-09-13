@@ -20,8 +20,9 @@ else in Z_p, with exp(x) = w^x.  Then
 
 holds because the FIELD says so, not because anything derived it -- which is
 exactly the identity flash attention's telescoping rescale needs and the one
-Volta spends gigabytes canonicalising.  The restriction that comes with it is at
-most one exp on any input-to-output path; attention is inside that.
+Volta spends gigabytes canonicalising.  The encoding covers one exp on an input-to-output path exactly; a second,
+nested one becomes an opaque atom (see `_eval`), which keeps equality decidable
+and gives up only the exp identities at that inner level.
 
 `max`, `min` and everything else outside the theory become opaque atoms keyed by
 term identity, which is what Volta does with them too.  Because both sides are
@@ -103,9 +104,15 @@ class Point:
             for a in t.args: r = r * self._eval(a, mod, memo, in_exponent) % mod
         elif isinstance(t, T.App) and t.fn == "exp":
             if in_exponent:
-                raise Unsupported("exp inside an exponent is outside the fragment")
-            r = pow(OMEGA, self._eval(t.args[0], Q, self.vq, True), P)
-            if mod != P: raise Unsupported("exp reached in the exponent field")
+                # A second level of exp cannot be encoded as w^x consistently with
+                # the first.  It can be an opaque atom, keyed by what its argument
+                # evaluates to in the field we are in: the same trade pit makes
+                # for max, min, sqrt and log, and the same bound.  KernelBook row
+                # 116 (softmax -> bmm -> softmax) is the corpus row that needs it.
+                r = self._draw(mod, ("exp", self._eval(t.args[0], mod, memo, True)))
+            else:
+                r = pow(OMEGA, self._eval(t.args[0], Q, self.vq, True), P)
+                if mod != P: raise Unsupported("exp reached in the exponent field")
         elif isinstance(t, T.App) and t.fn == "div":
             d = self._eval(t.args[1], mod, memo, in_exponent)
             if d == 0: raise Unsupported("denominator vanished at this point; retry")

@@ -75,6 +75,10 @@ ACC_GATE_REL = 1e-4
 # skipped, and wall-clock seconds for the whole stage.  See value_pass.
 Z3_NODES = int(os.environ.get("TVJ_Z3_NODES", 100_000))
 Z3_SECS = float(os.environ.get("TVJ_Z3_SECS", 60))
+# A representative pair that random real points separate by more than this
+# relative margin is not sent to Z3: it is not equal, and rounding does not
+# reach 1e-4.  Pairs closer than that are still handed to Z3 as before.
+Z3_PRUNE_REL = float(os.environ.get("TVJ_Z3_PRUNE_REL", 1e-4))
 # The same bar for the VALUE obligation's witness point, and relative for the same
 # reason.  It was absolute (`max|a-b| > 1e-4`), which is the exact measure this
 # project's own headline finding is about: KernelBook row 308 hides a 190 % relative
@@ -337,6 +341,7 @@ def judge(cand, timeout=150, tol_trials=5):
     verdict, and the histogram of verdicts is the coverage measurement."""
     rec = {"name": cand.name}
     rec.update(cand.meta)
+    t_row = time.time()
     signal.alarm(timeout)
     gate = {}                                   # populated once the GPU run has happened
     probe = make_probe(cand)                    # keeps our own inputs off the GPU's asserts
@@ -447,9 +452,10 @@ def judge(cand, timeout=150, tol_trials=5):
         # is also what the precision obligation is measured against.
         with torch.no_grad(): ref = first(model(*inputs))
         ref_dtype = ref.dtype if torch.is_tensor(ref) else torch.float32
-        tr = TT.TorchTrace()
+        tr = TT.TorchTrace(); t0 = time.time()
         with torch.no_grad():
             out_all, calls = capture(lambda: cand.run(inputs), ns=cand.ns, trace=tr)
+        rec["t_capture"] = round(time.time() - t0, 2)
         out = first(out_all)
         if not torch.is_tensor(out): rec["verdict"] = "NON-TENSOR"; return rec
         rec["launches"] = sum(1 for c in calls if c[0] != "extern")
@@ -479,6 +485,7 @@ def judge(cand, timeout=150, tol_trials=5):
         # determinism: a second run must agree bit for bit, or nothing below means
         # anything.  This used to be recorded and never acted on -- a kernel whose
         # two runs differed still flowed through every obligation and could PASS.
+        t_gpu = time.time()
         with torch.no_grad(): out2 = first(cand.run(inputs))
         rec["det"] = bool(torch.allclose(out.float(), out2.float(), rtol=0, atol=0, equal_nan=True))
         if not rec["det"] and not rng_bufs:
@@ -505,6 +512,7 @@ def judge(cand, timeout=150, tol_trials=5):
             rec["d4"], _, _ = (None, None, None) if rng_bufs else tolerance(
                 lambda xs: model(*xs), cand.run, mk, trials=tol_trials, flip=True, probe=probe)
             if terr: rec["tol_error"] = terr
+        rec["t_gpu"] = round(time.time() - t_gpu, 2)
 
         if not any(c[0] != "extern" for c in calls): rec["verdict"] = "NO-KERNEL"; return rec
 
@@ -746,7 +754,8 @@ def judge(cand, timeout=150, tol_trials=5):
             # every lane, as before.
             if os.environ.get("TVJ_LANES", "1") != "0":
                 from tvj.measure import lanes
-                groups = list(lanes.group(pairs).values())
+                t0 = time.time(); groups = list(lanes.group(pairs).values())
+                rec["t_lanes"] = round(rec.get("t_lanes", 0) + time.time() - t0, 3)
                 rec["lanes"] = {"pairs": len(pairs), "shapes": len(groups)}
             else:
                 groups = [[i] for i in range(len(pairs))]
@@ -789,13 +798,32 @@ def judge(cand, timeout=150, tol_trials=5):
             errs = [x for x in res_rep if isinstance(x, str)]
             if errs: return "unknown", errs[0][:70]
             unproved = [g for g, r in enumerate(res_rep) if r is False]     # GROUPS, not lanes
+            clear = set()
             if unproved:
+                # Before Z3, a cheap look: evaluate the unproved representatives at
+                # random real points.  A pair that comes apart by a clear margin is not
+                # equal, and no sound prover will say it is -- so Z3 is not asked.  A
+                # pair that agrees, or differs only at rounding level, still goes to
+                # Z3 exactly as before, so nothing provable is lost.  KernelBook row 116
+                # spent its whole 60 s Z3 budget on 64 shapes that evaluation at random
+                # points had already separated in 6 ms.
+                try:
+                    pre_dom = dict(grid.bufsize); pre_dom.update(sym_domain(sf, kterms))
+                    pre = NUM.witness([reps[g] for g in unproved], pre_dom)
+                    for g, w in zip(unproved, pre):
+                        if w[0] is False:
+                            _, va, vb = w[1]
+                            if abs(va - vb) > Z3_PRUNE_REL * max(1.0, abs(va), abs(vb)): clear.add(g)
+                except ValueError:
+                    pass
+                if clear: rec["z3_pruned"] = len(clear)
                 # stage 3: Volta canonicalises `select` as an uninterpreted atom, so it
                 # cannot relate two piecewise functions written differently.  Hand those
                 # to Z3, which case-splits.  On representatives: this used to run per
                 # lane, so grouping 256 lanes into 2 shapes still cost 256 Z3 calls and
                 # row 97 timed out after pit had said "differ" in 11 ms.
-                pw = [g for g in unproved if CS.has_piecewise(reps[g][0]) or CS.has_piecewise(reps[g][1])]
+                pw = [g for g in unproved if g not in clear
+                      and (CS.has_piecewise(reps[g][0]) or CS.has_piecewise(reps[g][1]))]
                 # Two budgets Z3's own 5 s timeout does not cover.  Its TRANSLATION is
                 # unbounded: LLM row 92 is one output of 417,945 nodes (a soft clDice's
                 # nested min/max pools), and building that Z3 AST took the rest of the
@@ -806,6 +834,7 @@ def judge(cand, timeout=150, tol_trials=5):
                 pw = [g for g in pw if g not in big]
                 if pw or big:
                     won, t0 = 0, time.time()
+                    t_z3 = t0
                     for k, g in enumerate(pw):
                         left = Z3_SECS - (time.time() - t0)
                         if left <= 0:
@@ -814,6 +843,7 @@ def judge(cand, timeout=150, tol_trials=5):
                         if r is True: decided_by[g] = "Z3"; won += 1
                     if big: rec["z3_skipped_size"] = len(big)
                     rec["casesplit"] = f"{won}/{len(pw)} shapes decided by case split"
+                    rec["t_z3"] = round(rec.get("t_z3", 0) + time.time() - t_z3, 2)
                     unproved = [g for g in unproved if decided_by.get(g) != "Z3"]
             via = "+".join(k for k in ("Volta", "Z3", "pit") if k in decided_by.values()) or "AC"
             if not unproved: return "equal", via
@@ -823,8 +853,10 @@ def judge(cand, timeout=150, tol_trials=5):
             dom = dict(grid.bufsize); dom.update(sym_domain(sf, kterms))
             wit_points = [NUM.random_point(dom, l, h, seed=s) for s, (l, h) in
                           enumerate([(-1., 1.), (0.05, 1.), (0.5, 2.), (-1., 1.), (0.05, 1.), (0.5, 2.)])]
+            t0 = time.time()
             try: wit = NUM.witness([reps[g] for g in unproved], dom)
             except ValueError as e: return "unknown", f"no numeric witness ({e})"[:70]
+            finally: rec["t_witness"] = round(rec.get("t_witness", 0) + time.time() - t0, 2)
             if all(w[0] is None for w in wit):
                 n_lanes = sum(len(groups[g]) for g in unproved)
                 return "unknown", (f"{n_lanes} outputs unproved; no input point leaves both sides finite")
@@ -962,5 +994,6 @@ def judge(cand, timeout=150, tol_trials=5):
         return rec
     finally:
         signal.alarm(0)
+        rec["t_total"] = round(time.time() - t_row, 2)
         # set lazily, while probing, so it can only be read on the way out
         if getattr(probe, "stale", None): rec["probe_stale"] = probe.stale

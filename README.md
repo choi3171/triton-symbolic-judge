@@ -90,12 +90,15 @@ shape, and so are 2048 attention lanes), and Volta treats a leaf as an opaque
 variable, so pairs with the same joint shape are one question up to renaming
 (`tvj/measure/lanes.py`). Z3 case splitting handles piecewise terms — the step
 [Volta's paper](https://arxiv.org/abs/2511.12638) says "could be handled by case
-splits" and declines to take. And what Volta cannot canonicalise within its caps
+splits" and declines to take — on the shapes that random real points cannot
+already tell apart, since a pair that separates by a clear margin is not equal
+and no sound prover will say it is. And what Volta cannot canonicalise within its caps
 is decided by **evaluating both sides at random points over a finite field**
 (`tvj/measure/pit.py`, after [Mirage](https://arxiv.org/abs/2405.05751)'s
 encoding: `exp(x) = ω^x` with exponents in a field of order dividing the base
-field's, so `exp(a)·exp(b) = exp(a+b)` holds because the field says so). That
-never builds the normal form, so its cost is the DAG's size rather than the
+field's, so `exp(a)·exp(b) = exp(a+b)` holds because the field says so; an exp
+nested inside another's exponent becomes an opaque atom, the trade already made
+for max and min). That never builds the normal form, so its cost is the DAG's size rather than the
 polynomial's; its "equal" is probabilistic, with error at most (d/2⁶¹)³ per pair,
 and is recorded as such — `via: pit`, with the seed. The seed is drawn fresh for
 every judgement.
@@ -193,12 +196,12 @@ finds it immediately.
 ### Corpus results
 
 On one criterion — *the corpus' own numeric check passes and the judge still
-FAILs* — there are 14, every one corroborated on hardware before being counted:
+FAILs* — there are 15, every one corroborated on hardware before being counted:
 
 | corpus | judged | tolerance passes, judge FAILs |
 |---|---|---|
-| 400 Inductor-generated (KernelBook) | 78 % | 5 — at the witness point the GPU shows up to 7.3 × 10³ |
-| 156 LLM-generated Triton | 63 % | 9 — 6 on value, 3 on accuracy |
+| 400 Inductor-generated (KernelBook) | 79 % | 6 — at the witness point the GPU shows up to 7.3 × 10³ |
+| 156 LLM-generated Triton | 64 % | 9 — 6 on value, 3 on accuracy |
 
 One of the five is in the count only by luck, and says so: KernelBook row 17
 leaves its parameters uninitialised, so the tolerance test compares garbage with
@@ -228,10 +231,16 @@ disagreement.
   witness point the GPU shows 3.3. The identity-element mechanism again — and a
   row only the random-point stage reaches, because Volta has no interpretation
   for `sin`.
+- **Row 116, `AttentionModuleV2`.** Two attention layers in sequence — softmax,
+  bmm, softmax — so every output has an `exp` inside another exp's exponent,
+  outside the fragment the field encoding covers. The inner exp is an opaque
+  atom now, keyed by what its argument evaluates to, and the row separates at
+  random points in 6 ms; the GPU reproduces it at 2.0. The dataset's own
+  tolerance test passes it.
 
-Across the 314 decided KernelBook rows the tolerance test and the judge **agree
-on 305** — 277 both pass, 28 both fail — **and part company on 9, all in one
-direction**: 5 rows the tolerance test passes and the judge fails, and 4 it
+Across the 317 decided KernelBook rows the tolerance test and the judge **agree
+on 307** — 277 both pass, 30 both fail — **and part company on 10, all in one
+direction**: 6 rows the tolerance test passes and the judge fails, and 4 it
 cannot judge at all, because both sides draw randomness and there is nothing to
 compare; those the judge decides as PASS-ASSUMING. Zero rows fail the tolerance
 test and pass the judge.
@@ -259,7 +268,7 @@ these parameters*, *poison this buffer*. Derived from a single kernel, two
 directives catch all 7 of the documented exploits; the corpus' own correctness
 check catches none of them.
 
-Over the 43 FAILs in the two corpora the axis comes out for **31**, and what
+Over the 46 FAILs in the two corpora the axis comes out for **34**, and what
 separates them is the shape of the defect rather than the size of the corpus.
 `vary-parameter` and `vary-input` are named by the buffers the *reference* reads
 and the *kernel* does not, so they fire when a kernel omits something — the LLM
@@ -345,7 +354,7 @@ budget comes from, and the next thing worth shrinking.
      table when one of them is missing, where it used to print "100 % hangs the
      judge" instead. -->
 
-**Judged coverage.** 78 % of 400 Inductor-generated rows, 63 % of 156 LLM-written rows.
+**Judged coverage.** 79 % of 400 Inductor-generated rows, 64 % of 156 LLM-written rows.
 
 |                                                            | KernelBook | LLM traces | can a generator steer into it? |
 |------------------------------------------------------------|------------|------------|--------------------------------|
@@ -353,17 +362,17 @@ budget comes from, and the next thing worth shrinking.
 | the kernel uses a TTIR construct we do not model           | 4.5 %      | 1.9 %      | **yes**                        |
 | a torch tail after the kernels we could not replay         | 0.2 %      | 10.3 %     | yes, and see below             |
 | the candidate does not compile or run at all               | —          | 9.6 %      | no                             |
-| our caps: the 150 s alarm, 4 GB for Volta, the term budget | 2.2 %      | 0.6 %      | **yes**, and see below         |
+| our caps: the 150 s alarm, 4 GB for Volta, the term budget | 1.2 %      | —          | **yes**, and see below         |
 | our plumbing failed to open the row                        | 0.2 %      | 1.3 %      | no                             |
 | the reference itself is random                             | 0.5 %      | 1.3 %      | no                             |
 | the row hangs the judge and never returns a verdict        | —          | —          | no                             |
-| **the method genuinely cannot decide**                     | 1.2 %      | 8.3 %      | —                              |
+| **the method genuinely cannot decide**                     | 1.5 %      | 8.3 %      | —                              |
 
 What matters is not how much is left but **who controls whether a kernel lands
 there**. A reference op we do not model is fixed by the task, so no policy can
 aim at it. A TTIR construct we do not model is a target, and so is our own cost:
-on that reading a generator could aim at 28 rows of KernelBook and 20 of the LLM
-corpus, 7.0 % against 12.8 %. The two are not the same kind of target, though.
+on that reading a generator could aim at 24 rows of KernelBook and 19 of the LLM
+corpus, 6.0 % against 12.2 %. The two are not the same kind of target, though.
 The TTIR bucket is a list of named constructs — 17 rows of arithmetic on an
 integer loaded from memory, 3 of transposed convolution, 1 of `scf.while` — and
 it shrinks as they are implemented. The caps bucket is a region, and it is the
@@ -400,9 +409,11 @@ Evaluation at random points does not build the normal form, and on the same 4 GB
 machine it decided 6 of those 13 in the experiment: rows 86, 310, 318 and 328
 PASS, and **rows 61 and 97 FAIL, with a numeric witness the GPU reproduces** —
 the two of the thirteen that fail the corpus' own tolerance test. Republished
-across both corpora, with Volta also held to a 60 s wall clock so the stage
-after it gets a turn, the caps bucket gave up eleven rows: five KernelBook FAILs
-the GPU reproduces (61, 97, 196, 233, 306), five PASSes, and LLM row 127 above. Of the seven it does not
+across both corpora, with Volta held to a 60 s wall clock and the Z3 stage to a
+size and a time budget so the stages after them get a turn, the caps bucket gave
+up fourteen rows: eight KernelBook FAILs the GPU reproduces (61, 97, 116, 137,
+194, 196, 233, 306), five PASSes, and LLM row 127 above. Nothing Volta-bound is
+left in it. Of the seven it does not
 decide, each has a name: row 116 has an `exp` inside an exponent, outside the
 fragment the field encoding covers; row 363 spends 137 s in symbolic execution
 and the spec before any decision runs; three LLM rows separate at random points
@@ -417,11 +428,11 @@ test, against 23 of the 300 decided rows — 5.2 times the rate, Fisher p = 0.00
 Raising the caps (`TVJ_ROW_TIMEOUT=1800`, `VOLTA_MEM_GB=24`,
 `TVJ_VOLTA_BUDGET=4e9`) decided four of the six, every one a FAIL the GPU
 reproduced at the witness point. The caps were not holding rows nobody had got
-to; they were holding defects. The enrichment is gone now — 2 of the 9 rows left
-in the bucket fail tolerance, 2.5×, p = 0.20 — and it is gone for the right
-reason: four of the six are FAILs at the default caps (61, 97, 196, 233), and the
-two that remain, 137 and 194, are the ones the 150 s row alarm stops before any
-decision runs. `TVJ_ROW_TIMEOUT=1800` still decides them.
+to; they were holding defects. The enrichment is gone now — 0 of the 5 rows left in
+the bucket fail tolerance — and it is gone for the right reason: all six are
+FAILs at the default caps (61, 97, 137, 194, 196, 233). What remains in the
+bucket is three rows the 150 s row alarm stops in symbolic execution or the spec
+build and two over the term budget; none is blocked inside Volta.
 
 The two that do not come back that way are the two blocked inside Volta rather
 than by a cap of ours, and 24 GB is not enough for either. One is row 61, where
@@ -429,9 +440,10 @@ reading the generated wrapper settles it without the judge at all:
 `Attention.forward(self, k, q)` takes k first, and the wrapper hands `w_k` the
 second input and `w_q` the first — both `(4, 4, 1, 4)`, so `assert_size_stride`
 is satisfied. The GPU disagrees by 0.26, deterministically. Memory does not reach
-it; evaluation at random points does, in 9 ms, and the row is a FAIL. Raising
-the caps buys the alarm- and term-budget-bound part of this bucket; the
-random-point stage buys the Volta-bound part; what neither buys is named above.
+it; evaluation at random points does, in 9 ms, and the row is a FAIL. The
+random-point stage, with budgets on Volta and Z3 so it is reached, bought the
+whole Volta-bound part of this bucket; raising the row alarm and the term budget
+is what is left to buy, and the rows it would buy are named above.
 
 The number is not the reason; the representation is. A term graph is proportional
 to the **work a kernel does rather than to the program that does it** — a tiled
