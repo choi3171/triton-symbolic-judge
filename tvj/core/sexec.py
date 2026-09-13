@@ -218,7 +218,7 @@ def _f32(x):
 # -- so this is about 3 GB of Python objects.  The number is a property of the
 # machine the judge runs on, not of the method, and `TVJ_TERM_BUDGET` raises it.
 # What it does NOT do is stop a kernel being shaped so that canonicalising it is
-# expensive: see tvj/measure/steerable.py, and the Limits section of the README.
+# expensive: see tvj/measure/steerable.py, and docs/caps.md.
 TERM_BUDGET = int(__import__("os").environ.get("TVJ_TERM_BUDGET", 8_000_000))
 
 class TermBudget(Exception): pass

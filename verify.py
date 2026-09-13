@@ -59,7 +59,7 @@ def claim(script, desc, patterns, args=(), tag="", slow=False, mem_gb=0):
     """`mem_gb` is what the claim needs Volta to be allowed, in GB.  A claim that
     needs more than the machine has is reported as skipped rather than failed:
     attention at L=128 peaks at 9.19 GB for ref-vs-flash (see the Cost section of
-    the README), and under the 4 GB default it dies on the cap in a minute and
+    docs/caps.md), and under the 4 GB default it dies on the cap in a minute and
     looks like a regression."""
     CLAIMS.append((script, tuple(args), desc, patterns, tag, slow, mem_gb))
 

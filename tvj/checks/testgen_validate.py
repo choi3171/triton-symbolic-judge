@@ -95,7 +95,7 @@ def emitted_checks_run():
     by people and never by Python -- and the poison-output block read `_` after a
     comprehension had rebound it to an int, so it raised TypeError.  It survived
     because poison-output is the one directive that never fires on a natural
-    corpus (see the Limits section of the README): the block that no corpus row
+    corpus (see docs/testgen.md): the block that no corpus row
     exercises is exactly the block that broke.
 
     This asserts that the source RUNS, not that it catches anything -- the toy

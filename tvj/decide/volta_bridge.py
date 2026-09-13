@@ -14,7 +14,7 @@ BIN = at("bridge", "target", "release", "volta_bridge")
 # already emitted, so the dominant case -- a binary Add or Mul -- is nine bytes.
 # It replaced a list of Python dicts plus a JSON string, measured at 245 B and
 # 80 B per node: NODE_CAP's worth of dicts alone came to half a gigabyte before
-# the child process saw any of it, and the README's Cost section has the Python
+# the child process saw any of it, and the Cost section of docs/caps.md has the Python
 # side passing Volta as the bottleneck at L=256 because of it.  Nothing about the
 # terms changed -- this is the same node stream in a smaller alphabet.
 MAGIC, WIRE_VERSION = b"TVJB", 1

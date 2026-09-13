@@ -1,348 +1,85 @@
 # A symbolic judge for Triton kernels
 
-Checks a Triton GPU kernel against the PyTorch module it is supposed to replace,
-by comparing the two as **expressions over symbolic inputs** rather than by
-running both on sampled data. A defect that only shows up outside the test
-distribution cannot hide from it.
+Checks a Triton GPU kernel against the PyTorch module it replaces by comparing
+the two as **expressions over symbolic inputs**, not by running both on sampled
+data. When they differ, it finds a concrete input where they do and confirms the
+difference on the GPU before reporting it.
 
-The motivating question: LLM-generated GPU kernels that pass a tolerance test —
+The question behind it: LLM-generated GPU kernels that pass a tolerance test —
 are they actually correct?
 
 ```
 pip install -r requirements.txt
 ./setup.sh            # fetch Volta, KernelBench and the corpora; build the bridge
-python3 verify.py     # re-run every claim here; --all adds the slow three
+python3 verify.py     # re-run every claim in this repository; --all adds the slow three
 ```
 
-The shell scripts find the interpreter rather than assume `python3`, and
-`PYTHON=/path/to/python` overrides them — a conda notebook can have only
-`python`, and a shell that re-reads its profile can lose the PATH the notebook
-process had.
+`PYTHON=/path/to/python` overrides the interpreter the shell scripts use.
 
-**Every number below comes from a script `verify.py` re-runs**, and the claim it
-checks is either the number itself or — where the last digits belong to the
-hardware — the property that number has to have. Three results are hand-run
-instead and say so where they appear: the Cost table, the permutation result
-under *From a counterexample to a test*, and the truncation comparison under
-Prior work. `results/verify.txt` is a full run: 41/41 on a Tesla T4. Claims about
-the *architecture* are tagged `[sm_75]` and a different one answering differently
-is information rather than a failure; claims that merely need a GPU are `[gpu]`
-and are counted everywhere. `verify.py --help` is its own docstring.
-
-## How it works
-
-Two term graphs are built and compared.
-
-**The reference side.** `STensor` is a numpy object array whose elements are
-terms, wearing a torch surface. Substitute it for a module's parameters and call
-`forward`, and the *unmodified* reference code emits terms — `__torch_function__`
-picks up `torch.matmul`, `F.softmax`, `F.layer_norm` and the rest.
-
-**The kernel side.** `JITFunction.run` is hooked, so the generated code's real
-GPU launches are recorded — kernel, grid, arguments, constexprs — and the TTIR is
-interpreted symbolically over the whole grid. Tensors are matched to roles by
-**storage base plus element offset**, not by object identity, because Inductor
-hands out `reinterpret_tensor` views and non-contiguous output strides. Nothing
-is asked of the generator beyond `launch(*inputs) -> output`.
-
-Floating point is modelled as **exact reals**. That is the load-bearing choice:
-it makes reassociation free (split-K, flash attention, tree reductions are all
-equal), and it means the two things reals cannot see — representation error and
-precision contracts — need checks of their own.
-
-### First, is it a function of its inputs at all?
-
-Before any of the five, the kernel is run twice at the same inputs and the two
-answers must agree bit for bit. If they do not, nothing below means anything —
-and if the reference is *also* nondeterministic, the task itself is, and there is
-nothing to refine either way. Both outcomes are the verdict `NONDETERMINISTIC`
-rather than a FAIL, because neither is a claim about correctness.
-
-A kernel that draws randomness is not given up on, though. The draws are lifted
-to inputs: the kernel's k-th draw becomes a named buffer, the reference's k-th
-draw is bound to the same name, and the question becomes the one worth asking —
-*given the same draw, do the two compute the same thing?* That binding is an
-assumption, and it is recorded (below), not assumed away. Randomness that never
-materialises as a tensor of its own — `native_dropout` returns its mask, not its
-draw — cannot be bound to anything and is refused.
-
-### Five checks, not one
-
-Each is a separate claim the kernel has to satisfy; a verdict names which one
-failed.
-
-| check | question | instrument |
-|---|---|---|
-| **value** | the same real number? | AC normal form → [Volta](https://github.com/willtunnels/volta)'s decision procedure → Z3 case splitting for piecewise terms |
-| **memory** | does it read what nothing wrote, skip an output, or race with itself? | symbolic execution of the whole grid |
-| **precision** | is it not *less* precise than the reference? | a lattice with a direction, because `ieee → tf32` is real-equal but not a refinement |
-| **precondition** | does the real-number proof still mean anything in float32? | interval analysis with three relational rules |
-| **accuracy** | the same expression, arranged so float32 loses digits? | evaluate both terms in float32 and in float64, compare the *errors* |
-
-Value is decided in four stages, cheapest first. Terms are hash-consed and
-normalised for associativity and commutativity, so most pairs come out
-*identical* and no solver runs at all: **257 of 277** KernelBook value decisions
-finish there; Volta decides 14, Z3 one, and evaluation at random points 5. What is
-left after AC goes to Volta's exponential-polynomial procedure —
-**one representative per shape, not one per output element**: a tile kernel's
-outputs are a handful of shapes over different leaves (1024 matmul lanes are one
-shape, and so are 2048 attention lanes), and Volta treats a leaf as an opaque
-variable, so pairs with the same joint shape are one question up to renaming
-(`tvj/measure/lanes.py`). Z3 case splitting handles piecewise terms — the step
-[Volta's paper](https://arxiv.org/abs/2511.12638) says "could be handled by case
-splits" and declines to take — on the shapes that random real points cannot
-already tell apart, since a pair that separates by a clear margin is not equal
-and no sound prover will say it is. And what Volta cannot canonicalise within its caps
-is decided by **evaluating both sides at random points over a finite field**
-(`tvj/measure/pit.py`, after [Mirage](https://arxiv.org/abs/2405.05751)'s
-encoding: `exp(x) = ω^x` with exponents in a field of order dividing the base
-field's, so `exp(a)·exp(b) = exp(a+b)` holds because the field says so; an exp
-nested inside another's exponent becomes an opaque atom, the trade already made
-for max and min). That never builds the normal form, so its cost is the DAG's size rather than the
-polynomial's; its "equal" is probabilistic, with error at most (d/2⁶¹)³ per pair,
-and is recorded as such — `via: pit`, with the seed. The seed is drawn fresh for
-every judgement.
-
-AC does that much of the work because of **delegation**: when both sides hand the
-same operation to the same library call with the same arguments, it becomes one
-uninterpreted symbol and hash-consing decides it for free. That is sound only if
-the symbol's name encodes everything the result depends on, so every builder
-fails closed — an unencoded parameter raises rather than producing a symbol. If
-the two sides disagree, the symbols are expanded and the pair is decided the slow
-way, because two different uninterpreted symbols are not a counterexample.
-
-### When a FAIL is believed
-
-Two of the five are checked against hardware before they are reported.
-
-**Value** is checked at its witness point — the concrete input where the two
-terms take different values. If the GPU does not reproduce the disagreement
-there, the verdict is UNKNOWN, not FAIL. Every false positive this project has
-produced was caught by that rule. "Reproduces" is measured *relative to the
-reference's own magnitude*, for the reason row 308 below is in this README at
-all: a bar spelled in absolute terms hides a 190 % error under an output of
-~1e-4, and at an output of ~1e8 it is below float32's own spacing and means
-nothing either way.
-
-**Accuracy** is checked at the input regime that made it fire. Cancellation is
-silent at the benchmark's inputs — that is the entire reason the check exists —
-and loud at the shifted inputs that trigger it, so silence *there* means a
-modelling gap rather than a defect (`tvj/checks/acc_gate.py`).
-
-The other three are deliberately not checked that way, and must not be. Hardware
-is structurally silent for them: a stale buffer holds the right answer, tf32 is
-ignored on sm_75, a narrowed validity radius only shows at extreme inputs.
-Gating them would discard exactly the defects a test cannot reach.
-
-A separate verdict, `PASS-ASSUMING`, carries a stated assumption the judge cannot
-discharge. There are two kinds, and both are properties of the *input data*
-rather than of the kernel, which is why neither can be proved from the kernel and
-both are written into the verdict instead:
-
-- **`index-distinct`** — a scatter to a data-dependent address is well defined
-  exactly when the indices are pairwise distinct. torch is in the same position
-  and resolves it the same way: `scatter_` is documented as nondeterministic when
-  indices collide.
-- **`rng-correspondence`** — when both sides draw randomness, their k-th draws
-  are matched by order and by shape. Nothing outside the two programs can confirm
-  that those are the same draw.
-
-A PASS that rests on an unstated assumption is not a PASS, so the assumption
-travels with the verdict.
-
-### The reference is the weak point
-
-A wrong reference makes a correct kernel FAIL, which is loud, and can make a
-wrong kernel PASS, which is silent. Nothing downstream can catch the second.
-
-Three defects of one shape shipped before this was taken seriously: a
-`F.linear(bias=)` keyword dropped by a `**kwargs`, `mean(axis=-1)` turned into a
-global mean, and `avg_pool2d`'s `ceil_mode` and `count_include_pad` swapped
-inside a lambda. None of them raised. More recently `STensor` had no `__eq__`, so
-`mask == 0` evaluated to Python `False` and `masked_fill(mask == 0, -1e9)` built
-a reference with the mask silently deleted.
-
-So the front-end is checked two ways: `tvj/checks/spec_sigcheck.py` lines every
-handler up against torch's own signature (nothing swallowed, mis-positioned, or
-declared and unread), and `tvj/checks/spec_agree.py` pushes 113 cases through
-both torch and the front-end and compares the numbers. Handlers whose edge
-semantics were recovered by reading torch's C++ rather than a published
-definition are marked, and a FAIL that rests on one says so.
-
-`tvj/core/semantics.py` is the artifact underneath all of it: 23 decisions the
-interpreter had to make because Triton does not answer them — what a masked lane
-loads, whether i32 index arithmetic wraps, whether a reduction is a tree or a
-fold — each with its basis and its evidence, five of them measured against
-hardware.
+**Every number here comes from a script `verify.py` re-runs**, and the claim it
+checks is either the number itself or, where the last digits belong to the
+hardware, the property that number has to have. The few results that are
+hand-run say so where they appear. `python3 verify.py --help` explains the rest.
 
 ## What it found
 
-**A tolerance test can be unable to fail, in at least three distinct ways.** Each
-was observed in a real corpus, and none was visible to the benchmark that was
-running:
+Two public corpora, every row run:
+
+| corpus | rows | judged | tolerance test passes, judge rejects |
+|---|---:|---:|---:|
+| [KernelBook](https://huggingface.co/datasets/GPUMODE/KernelBook), Inductor-generated Triton | 400 | 79 % | 6 |
+| [LLM-generated Triton](https://huggingface.co/datasets/ppbhatt500/kernelbook-triton-reasoning-traces) for KernelBook modules | 156 | 64 % | 9 |
+
+All 15 rejections are reproduced on the GPU at the input the judge found. None
+go the other way: in both corpora, no row fails the tolerance test and passes the
+judge.
+
+**One example: KernelBook row 308, `Critic`.** The generated wrapper passes
+tensors into the wrong roles. They are all `(4, 4)`, so the shape asserts are
+satisfied. The output is around 1e-4, and the benchmark's `atol=1e-3` hides a
+190 % relative error.
+
+**A tolerance test can be unable to fail**, and the two corpora show three ways:
 
 | mechanism | evidence |
 |---|---|
 | parameters left uninitialised — garbage compared against garbage | KernelBook row 17 |
 | output ~1e-4 under `atol=1e-3`, hiding a **190 % relative error** | KernelBook row 308 |
-| parameters default to the **identity element** of the op they feed (`bias=0`, `scale=1`, `tau=0`), so a kernel that ignores them is bit-identical | 5 LLM-generated kernels, and KernelBench's own level2/85 |
+| parameters default to the **identity element** of the op they feed (`bias=0`, `scale=1`), so a kernel that ignores them is bit-identical | 5 LLM-generated kernels, and KernelBench's own level2/85 |
 
-The last survives KernelBench-Verified's hardening. Its hidden tests vary the
-inputs four ways (as-is, ×3, ×0.01, negated) but build the model once, so a
-kernel with the scale multiply **deleted** passes all four at max difference
-exactly `0` (`tvj/measure/kbv_blindspot.py`). Drawing the parameter at random
-finds it immediately.
+The last survives KernelBench-Verified's hardening: its hidden tests vary the
+inputs four ways but build the model once, so a kernel with the scale multiply
+deleted passes all four at a max difference of exactly 0.
 
-### Corpus results
+Every rejected row, and why its benchmark missed it: [docs/findings.md](docs/findings.md).
 
-On one criterion — *the corpus' own numeric check passes and the judge still
-FAILs* — there are 15, every one corroborated on hardware before being counted:
+## How it works
 
-| corpus | judged | tolerance passes, judge FAILs |
-|---|---|---|
-| 400 Inductor-generated (KernelBook) | 79 % | 6 — at the witness point the GPU shows up to 7.3 × 10³ |
-| 156 LLM-generated Triton | 64 % | 9 — 6 on value, 3 on accuracy |
+The reference side runs the module's unmodified `forward` on tensors whose
+elements are symbolic terms. The kernel side records the real GPU launches of
+the generated code and interprets their TTIR symbolically over the whole launch
+grid. Floating point is modelled as exact reals, so reassociation is free
+(split-K, flash attention and tree reductions all come out equal), and the two
+things reals cannot see get checks of their own.
 
-One of the five is in the count only by luck, and says so: KernelBook row 17
-leaves its parameters uninitialised, so the tolerance test compares garbage with
-garbage and its verdict depends on what the allocator left behind — `True` on the
-run these numbers come from and `False` on the one before it. The row is flagged
-`DEGEN` for exactly this. LLM row 35 sits just outside on the other side: the
-corpus labels it correct while its own tolerance check disagrees.
+| check | question |
+|---|---|
+| **value** | the same real number? |
+| **memory** | does it read what nothing wrote, skip an output, or race with itself? |
+| **precision** | is it no less precise than the reference, e.g. no silent tf32? |
+| **precondition** | does the real-number proof still hold in float32? |
+| **accuracy** | the same expression, arranged so float32 loses digits? |
 
-The pattern is the same in all of them: the benchmark's inputs do not reach the
-disagreement.
+A determinism check runs first. Value is decided by an AC normal form, which
+settles most pairs with no solver, then [Volta](https://github.com/willtunnels/volta)'s
+decision procedure, Z3 for piecewise terms, and evaluation at random points over
+a finite field after [Mirage](https://arxiv.org/abs/2405.05751). A value or
+accuracy FAIL is reported only if the GPU reproduces it; otherwise the verdict
+is UNKNOWN. `PASS-ASSUMING` carries an assumption about the input data that the
+judge cannot discharge, such as distinct scatter indices.
 
-- **Row 17, `GatSymAttention`.** The module computes `leaky_relu(a1) + a2`; the
-  compiled version computes `a1 + leaky_relu(a2)`. `a1` and `a2` swap when the
-  two inputs are swapped, which is exactly what the wrapper does. The dataset's
-  test could not see it because the parameters are uninitialised — values around
-  1e33 and inf, where `allclose` passes on anything.
-- **Row 308, `Critic`.** The wrapper passes tensors into the wrong roles;
-  everything is `(4,4)`, so `assert_size_stride` is satisfied. The GPU confirms
-  the substituted computation at difference exactly 0. What hid it is scale, not
-  sign: `linear3` is initialised to `U(-0.003, 0.003)`, so the output is ~1e-4
-  and `atol=1e-3` swallows a 190 % relative error (`tvj/measure/kb_critic.py`).
-- **The three accuracy rejects are one shape**: `tanh` spelled
-  `(e^{2x}−1)/(e^{2x}+1)`, exact over the reals and NaN in float32 above
-  x = 44.4. The GPU is non-finite there and the reference is not.
-- **LLM row 127, `PainnRadialBasis`.** The kernel never reads the parameter
-  `p_n`; at the benchmark's inputs the two agree to 2.4 × 10⁻⁷, and at the
-  witness point the GPU shows 3.3. The identity-element mechanism again — and a
-  row only the random-point stage reaches, because Volta has no interpretation
-  for `sin`.
-- **Row 116, `AttentionModuleV2`.** Two attention layers in sequence — softmax,
-  bmm, softmax — so every output has an `exp` inside another exp's exponent,
-  outside the fragment the field encoding covers. The inner exp is an opaque
-  atom now, keyed by what its argument evaluates to, and the row separates at
-  random points in 6 ms; the GPU reproduces it at 2.0. The dataset's own
-  tolerance test passes it.
-
-Across the 317 decided KernelBook rows the tolerance test and the judge **agree
-on 307** — 277 both pass, 30 both fail — **and part company on 10, all in one
-direction**: 6 rows the tolerance test passes and the judge fails, and 4 it
-cannot judge at all, because both sides draw randomness and there is nothing to
-compare; those the judge decides as PASS-ASSUMING. Zero rows fail the tolerance
-test and pass the judge.
-
-**An honest negative produced the fifth check.** Catastrophic cancellation
-(`E[X²]−E[X]²`) went uncaught for a long time, and correctly so: the two forms
-are equal over the reals, the value check says exactly that, and a precondition
-failure first reported for it was a false positive. The defect lives in the float
-*representation*, not in the value. So the accuracy check evaluates both terms
-twice — once rounding every step to float32, once in float64 — at regimes that
-stress cancellation, and compares the two *errors*. It rejects the unstable form
-at ~3×10⁵ the reference's error, in a regime where the reference is still
-accurate, while passing legitimate reassociation
-(`tvj/checks/accuracy_test.py`).
-
-## From a counterexample to a test
-
-What the judge hands a harness once it has found something, and what the two
-corpora say about how often that is an axis rather than a point.
-
-**A counterexample yields an axis, not just a point — when the kernel leaves
-something out.** The judge reports which named buffers a disagreement rests on,
-so `tvj/judge/testgen.py` turns one exploit into a harness directive — *vary
-these parameters*, *poison this buffer*. Derived from a single kernel, two
-directives catch all 7 of the documented exploits; the corpus' own correctness
-check catches none of them.
-
-Over the 46 FAILs in the two corpora the axis comes out for **34**, and what
-separates them is the shape of the defect rather than the size of the corpus.
-`vary-parameter` and `vary-input` are named by the buffers the *reference* reads
-and the *kernel* does not, so they fire when a kernel omits something — the LLM
-shortcut, where a parameter's default is the identity element of whatever
-consumes it. A compiler does not omit; it reads everything and arranges it
-differently. Row 17 (`leaky_relu(a1)+a2` against `a1+leaky_relu(a2)`) and row 308
-(same-shaped tensors in swapped roles) read every buffer, and nothing is missing
-from either side. Redrawing the parameters still separates them, because the two
-*arrangements* of the same parameters differ — so the directive is emitted
-whenever the disagreement rests on parameters at all, not only when one is
-ignored. Row 308 is the measured case: of the five rows whose own benchmark
-passes them, it is the one that only a parameter redraw catches.
-
-**A generated check has to be able to see the row it came from.** It uses the
-harness's comparison — `allclose(atol=1e-2, rtol=1e-2)` — and that has an
-absolute floor, so at a small reference magnitude it is blind to a disagreement
-the judge found. Three FAILs are in that position, and two of them are rows their
-own benchmark passes. At the corpus' own seeds the absolute comparison misses 13
-of 15 trials on them; scaled by the reference's magnitude, the same measure the
-hardware gate uses, it catches 15 of 15. It stays silent where it should: on the
-rows the judge PASSes the worst relative error is 4 × 10⁻⁷ against a bar of
-10⁻⁴, so there is about 250× of headroom before ordinary float32 reassociation
-would trip it (`tvj/measure/relcompare.py`). So `compare-relative` is emitted
-when the record says the absolute floor would hide the defect — a directive that
-says how to *measure* rather than what to vary, which is why it does not count
-toward the 26.
-
-Two things did **not** work. Permuting same-shaped
-inputs looked like the natural axis for the swapped-role defects — of the FAILs
-that yielded no axis under the first rule, 18 have two inputs of one shape and
-the reference is asymmetric in them in all 18 — and it catches nothing the
-un-permuted harness does not already catch, on any of the 18 (hand-run; there is
-no `verify.py` claim for it). And `poison-output`, the axis for a stale-buffer
-read, has never fired on a natural corpus: neither corpus contains a memory FAIL,
-so that class exists here only as the hand-written fixtures in
-`tvj/fixtures/hacks.py`.
-
-The counts come from `python3 -m tvj.measure.directives`.
-
-## Cost
-
-Hand-measured, not asserted by `verify.py`: `tvj/measure/scale.py` and
-`tvj/checks/volta_attn.py` are the scripts, and only their verdicts are claims.
-Sizes rather than times — a time belongs to whatever machine ran it, and these
-numbers do not.
-
-Attention at D=16, BM=BN=16, comparing three formulations pairwise:
-
-| L | key blocks | outputs | term ops |
-|---:|---:|---:|---:|
-| 32 | 2 | 512 | 3.2 M |
-| 64 | 4 | 1024 | 26.4 M |
-| 128 | 8 | 2048 | 206.8 M |
-| 256 | 16 | 4096 | 349 M–509 M |
-
-**The cost of deciding is per shape, and it is dominated by the difference in
-shape between the two kernels, not by their size.** Lane by lane, at L=128 the
-bridge peaks at 0.56 GB for ref vs safe, 0.77 GB for safe vs flash, and **9.19 GB
-for ref vs flash** — twelve times more for the same problem, because the naive
-reference does not subtract the max, so its exponential polynomial cannot share
-the `−m` atom and the cross products expand. Deciding one representative per
-shape instead, the same ref vs flash pair at L=128 — which exceeds a 4 GB cap
-lane by lane — decides in **0.14 GB and 0.31 s**, every lane getting the verdict
-the lane-by-lane run gives; at L=64 it is 1.04 GB → 0.03 GB, and across the pairs
-both paths can run, 154× less Volta time (`tvj/measure/lanes.py`). What that
-leaves is the per-shape cost, which is a matter of how many distinct
-denominators one output sums rather than of size — the paragraph on caps below.
-
-At L=256 the well-shaped pairs stay under 4.5 GB in Volta while *our* Python side
-reaches 7.6 GB. That figure predates the bridge's binary wire format: handing one
-node to Volta used to cost a Python dict and about eighty bytes of JSON text, 325
-bytes against the nine it costs now. What is left on this side is the term DAG
-itself, at a measured 390 bytes per interned term — which is where the 8 M term
-budget comes from, and the next thing worth shrinking.
+The long version: [docs/how-it-works.md](docs/how-it-works.md). The data flow:
+[PIPELINE.md](PIPELINE.md).
 
 ## Limits
 
@@ -368,273 +105,45 @@ budget comes from, and the next thing worth shrinking.
 | the row hangs the judge and never returns a verdict        | —          | —          | no                             |
 | **the method genuinely cannot decide**                     | 1.5 %      | 8.3 %      | —                              |
 
-What matters is not how much is left but **who controls whether a kernel lands
-there**. A reference op we do not model is fixed by the task, so no policy can
-aim at it. A TTIR construct we do not model is a target, and so is our own cost:
-on that reading a generator could aim at 24 rows of KernelBook and 19 of the LLM
-corpus, 6.0 % against 12.2 %. The two are not the same kind of target, though.
-The TTIR bucket is a list of named constructs — 17 rows of arithmetic on an
-integer loaded from memory, 3 of transposed convolution, 1 of `scf.while` — and
-it shrinks as they are implemented. The caps bucket is a region, and it is the
-paragraph after next.
+What this is not:
 
-**The torch tail is the largest steerable bucket in the LLM corpus, and its fix
-is not ours to apply.** These are wrappers that finish the computation in PyTorch
-after the kernels. Requiring generation to emit a single fused Triton kernel
-removes the bucket entirely — and that is not a concession, because a torch tail
-also costs a launch and a materialised intermediate. The constraint that makes a
-kernel analysable is the one that makes it fast.
+- **Shapes are fixed.** A verdict holds at the input shape given. Every input in
+  the LLM corpus has at most 1024 elements, so the corpus was re-judged at two
+  blocks and a tail: 0 of the 89 PASS rows changed.
+- **Data-dependent control flow is refused.** A branch on a value read from
+  memory has nothing symbolic to split. An index read from memory is handled by
+  expanding the read, or for a scatter, under the stated assumption that the
+  indices are distinct.
+- **The coverage describes these two corpora**: small GitHub modules and one-shot
+  model answers, not production kernels.
+- **Nothing here was written against the judge.** A policy trained on its
+  verdicts is a question this repository cannot answer yet.
+- **A PASS is only as good as the PyTorch-side translation.** It is tested
+  against torch on 113 cases, not proved, and nothing downstream checks it.
 
-**Our caps are steerable — along one axis now, not two.** 13 of those 20 rows
-died inside Volta, on its address space or its term-operation budget. Two things
-can put a pair there. *Width* — many lanes of the same shape, each canonicalised
-separately — used to: holding the reference fixed, one correct attention kernel
-decided in 0.56 GB and another in 9.19 GB, and the expensive one was the faster
-one (`tvj/measure/steerable.py` demonstrates it: three formulations pairwise
-equal over the reals, a cap between the cheapest and the dearest, and the judge
-decides two and returns UNDECIDED on the third). Deciding one representative per
-shape closes that axis: the 9.19 GB pair is 0.14 GB. *Division* remains. The 13
-corpus rows are all of one kind — row 97 is 256 lanes of 2 shapes and each
-representative alone exceeds the budget; row 61 is 679 nodes per output and
-canonicalising one of them exceeds 3 GB — and it is not the kind the paper
-allows for. Volta canonicalises to a rational N/D and adds two fractions with
-different denominators by multiplying the denominators (`canon/ops.rs`,
-`rat_add_v`). A multi-head attention output sums one fraction per head, each
-over that head's own softmax denominator, so the common denominator has L^H
-terms and the equality check N1·D2 = N2·D1 has, counted without building it
-(`python3 -m tvj.measure.nf_rat kb 61`), about 10^6 monomials per output on row
-61 and 10^11 on row 97 — each carrying an exponent polynomial. The
-multiplicative depth of every one of these terms is 1. Volta's paper argues the
-blowup away by depth: canonicalisation "may cause exponential blowup", it says,
-but "since machine learning workloads do not typically have computations with
-high multiplicative depth, this blowup does not happen in practice". That
-argument is correct and does not cover this: the growth is exponential in the
-number of heads whose fractions one output sums, and on these two corpora it
-happens 13 times in 556 rows, in the kernels the paper is about. (An earlier
-version of this paragraph blamed multiplicative depth; it was measured at 1.)
+More: [docs/limits.md](docs/limits.md), and cost and the caps in
+[docs/caps.md](docs/caps.md).
 
-Evaluation at random points does not build the normal form, and on the same 4 GB
-machine it decided 6 of those 13 in the experiment: rows 86, 310, 318 and 328
-PASS, and **rows 61 and 97 FAIL, with a numeric witness the GPU reproduces** —
-the two of the thirteen that fail the corpus' own tolerance test. Republished
-across both corpora, with Volta held to a 60 s wall clock and the Z3 stage to a
-size and a time budget so the stages after them get a turn, the caps bucket gave
-up fourteen rows: eight KernelBook FAILs the GPU reproduces (61, 97, 116, 137,
-194, 196, 233, 306), five PASSes, and LLM row 127 above. Nothing Volta-bound is
-left in it. Of the seven it does not
-decide, each has a name: row 116 has an `exp` inside an exponent, outside the
-fragment the field encoding covers; row 363 spends 137 s in symbolic execution
-and the spec before any decision runs; three LLM rows separate at random points
-for a reason the numeric witness cannot then exhibit (an identity inside an
-opaque atom — the encoding's stated weakness); and two separate at the witness
-but the GPU does not reproduce it, which is our modelling gap and is reported as
-such.
+## Further reading
 
-**And the bucket was not neutral.** Before the random-point stage existed, 6 of
-the 15 KernelBook rows that hit one of our caps failed the corpus' own tolerance
-test, against 23 of the 300 decided rows — 5.2 times the rate, Fisher p = 0.001.
-Raising the caps (`TVJ_ROW_TIMEOUT=1800`, `VOLTA_MEM_GB=24`,
-`TVJ_VOLTA_BUDGET=4e9`) decided four of the six, every one a FAIL the GPU
-reproduced at the witness point. The caps were not holding rows nobody had got
-to; they were holding defects. The enrichment is gone now — 0 of the 5 rows left in
-the bucket fail tolerance — and it is gone for the right reason: all six are
-FAILs at the default caps (61, 97, 137, 194, 196, 233). What remains in the
-bucket is three rows the 150 s row alarm stops in symbolic execution or the spec
-build and two over the term budget; none is blocked inside Volta.
-
-The two that do not come back that way are the two blocked inside Volta rather
-than by a cap of ours, and 24 GB is not enough for either. One is row 61, where
-reading the generated wrapper settles it without the judge at all:
-`Attention.forward(self, k, q)` takes k first, and the wrapper hands `w_k` the
-second input and `w_q` the first — both `(4, 4, 1, 4)`, so `assert_size_stride`
-is satisfied. The GPU disagrees by 0.26, deterministically. Memory does not reach
-it; evaluation at random points does, in 9 ms, and the row is a FAIL. The
-random-point stage, with budgets on Volta and Z3 so it is reached, bought the
-whole Volta-bound part of this bucket; raising the row alarm and the term budget
-is what is left to buy, and the rows it would buy are named above.
-
-The number is not the reason; the representation is. A term graph is proportional
-to the **work a kernel does rather than to the program that does it** — a tiled
-matmul is Θ(M·N·K) nodes because every output element is denoted as a sum of K
-products — so "make it bigger" is always available. Raising a cap is worth doing,
-and the four rows above are what it buys; what it does not do is change what the
-threshold is a function of, which is why the axis survives every raise. Most of this
-section is that one fact in other clothes: shapes are fixed because the grid is
-enumerated, integers are concrete because that is what makes the memory check a
-dictionary lookup, and a branch on a loaded value is refused because there is
-nothing symbolic to split. It is a trade rather than a mistake — the same
-unrolling is why AC decides 257 of 277 value questions with no solver call, since
-everything is ground. A row over a cap is reported UNKNOWN rather than FAIL, so a
-kernel that is wrong *and* expensive to canonicalise used to go unjudged; the
-random-point stage judges it wherever the field encoding applies, and rows 61 and
-97 are what that is worth. Outside the fragment the axis is still open;
-and unlike the TTIR bucket, this one needs no unusual operation at all. No
-policy has been observed trying — that is the third claim under the adversary
-heading below.
-
-**What the method actually cannot do.** A loaded value used as an *address*. The
-memory model maps concrete offsets to terms, so a symbolic index has no slot.
-That splits three ways and only the last is a wall: a scatter-*add* is order-free
-and has a denotation in the existing algebra (`out[j] = Σᵢ select(idxᵢ = j, vᵢ,
-0)`); a scatter with provably distinct indices needs that plus a distinctness
-obligation, worth checking anyway; a scatter that may collide needs array theory
-*and* is order-dependent on real hardware, so "undecidable here" and "this kernel
-is nondeterministic" are the same fact.
-
-Above that sits the grid quantifier: the grid is enumerated concretely, which is
-why shapes must be fixed. Symbolic thread counts are solved for races
-(GPUVerify's two-thread reduction) and that reduction does not transfer to
-values, because an output depends on every program instance rather than a pair.
-
-Integers are the same story from the other side. They are concrete — Python
-`int`s with real two's-complement wraparound — and that concreteness is what
-makes the memory check decidable without a solver call: the store is a dictionary
-keyed by `(buffer, offset)`, so out-of-bounds is a comparison and a write
-conflict is a lookup. Symbolic integers would buy symbolic shapes and cost that.
-
-**Other measured limits.** TTIR coverage is 12 of 26 core ops plus `arith`,
-`math` and `scf.for`; there is no `scf.if` on a loaded value, no `scf.while`, no
-block pointers, and atomics are `fadd` only. Precision tracking is keyed on term
-identity, so two paths to the same normal form at different precisions take the
-minimum. The precondition layer is interval-based and cannot see relations; its
-three rules are specific to the softmax family, and underflow is flagged rather
-than judged, because a result that correctly rounds to zero in fp32 is harmless
-in absolute error and 100 % wrong in relative error — which of those is the spec
-is a decision, not a fact. Volta is used only as a decision procedure:
-`check_equivalent` over our own arena. Its race checking, its PTX front-end and
-the structured-CTA premise of its completeness proof are not carried over, so the
-soundness of this interpreter is argued informally, not proved.
-
-**These numbers describe these two corpora.** Both are small GitHub modules and
-one-shot model answers. They under-represent production kernels —
-tensor-parallel collectives, MoE routing, paged attention — where symbolic
-addressing and dynamic shapes are normal rather than exceptional. Read the
-coverage as a property of the corpora, not of the method.
-
-**Every input in the LLM corpus fits in one block, and the verdicts do not
-depend on it.** 155 of 155 first inputs have at most 1024 elements, so 123 of
-the 156 rows were judged with every launch a single program: `pid` was 0
-everywhere, and the arithmetic on it, and any tail past the first block, went
-untested. Re-judged with the leading dimension set to an odd m with m·inner >
-2048 — 33 for `[4,4,4,4]`, 2112 elements, at least two blocks and a tail for
-any BLOCK from 128 to 2048 (`tvj/judge/shape2_run.py`,
-`results/triton_traces_shape2.jsonl`) — **0 of the 89 PASS rows change
-verdict**: no FAIL, no crash, and 9 of the 10 FAILs stay FAILs
-(`python3 -m tvj.measure.shape2`). Three verdicts move, none across PASS: one
-FAIL becomes UNKNOWN because the witness Z3 found at the small shape is out of
-the numeric search's reach at the large one; one UNKNOWN times out; and one
-UNKNOWN becomes NONDETERMINISTIC — a kernel whose race needs more than one
-program to show, which a single-program grid cannot. The corpus' own tolerance
-test at the small shape was blind to nothing here. The theorem is still at a
-point; two points agreeing is evidence about these kernels, not a proof about
-the next one.
-
-**And nothing here has faced an adversary — which is three claims, not one.**
-Every kernel judged was written without knowledge of this judge: Inductor is a
-compiler, and the LLM corpus is a model answering in good faith. Kernels
-optimised against a *different* checker can be had today: Dr. Kernel's policy is
-published and 3 % of its output still hacks past its own check (see Prior work).
-A policy trained against *this* judge is the third, and this repository cannot
-answer it — that claim is about training dynamics, and no amount of judging
-kernels that already exist settles one.
-
-**Asked as a rate it is expensive, and probably the wrong question.** "Does
-putting the judge in the loop lower how often hacking happens" is a
-two-proportion test against a base rate of 2–3 % — which Dr. Kernel's numbers and
-the 13 rows of 556 above independently agree on — so roughly 1,500 judged
-rollouts per arm to resolve 3 % against 1.5 %, in two training runs (arithmetic,
-not a measurement). And hacking is not stationary: near zero until a policy finds
-the exploit and not after, so a rate averages over the only interesting event.
-Asked as an incident — when an exploit emerges, does the judge see it, and does
-the directive close that axis — it is an existence proof and needs one. That is
-the shape `tvj/checks/testgen_validate.py` already has: seven exploits, two
-directives, all seven caught. What is missing is not sample size. It is that all
-seven were transcribed by hand out of papers, and none emerged from a policy that
-was trying.
-
-**What a false PASS would look like.** A value FAIL is believed only if the GPU
-reproduces it at the witness point, and an accuracy FAIL only at the regime that
-fired; every false positive so far was caught at one of those. Nothing plays that
-role in the other direction. A PASS rests on the reference being right, and the
-reference is the one thing nothing downstream can check. The `__eq__` bug above
-is what that looks like in practice: it was found by reading the class against
-`torch.Tensor`, not by any test, and the regression cases were added afterwards.
-The honest claim is the process, not the outcome.
-
-One PASS is probabilistic by construction. When Volta cannot canonicalise a pair,
-equality is decided by agreement at random points over a finite field, with error
-at most (d/2⁶¹)³ per pair; such a row says `via: pit` and carries its seed. The
-seed is drawn fresh for every judgement, which is what makes this safe under
-optimisation pressure: a kernel that is not equal passes with probability ~2⁻¹⁸³
-each time it is judged, and a policy cannot climb a reward that never arrives.
-The encoding's own boundary is stated rather than hidden — the exponent field is
-not the reals, so `exp(q·x) = 1` in it, and the guarantee holds for expressions
-whose coefficient arithmetic stays below q ≈ 2⁶¹. float32 constants are dyadic
-with 24-bit numerators, so no product of them reaches q and no practical sum
-does; an expression built to cross it would be visible as such.
+| | |
+|---|---|
+| [docs/how-it-works.md](docs/how-it-works.md) | the five checks, the hardware gate, and the PyTorch side |
+| [docs/findings.md](docs/findings.md) | every rejected row and what hid it |
+| [docs/testgen.md](docs/testgen.md) | turning a counterexample into a check a harness runs without the judge |
+| [docs/caps.md](docs/caps.md) | cost, the caps, and where Volta's normal form blows up |
+| [docs/limits.md](docs/limits.md) | what the method cannot do, and what has not been tested |
+| [docs/prior-work.md](docs/prior-work.md) | Gimlet Labs, Dr. Kernel, and the rest |
+| [results/reward_hacking_judge.md](results/reward_hacking_judge.md) | the checks read from the side of a generator trying to get past them |
 
 ## Prior work
 
-**[Gimlet Labs](https://gimletlabs.ai/blog/formally-verifying-ai-generated-kernels)**
-(Taneja, St John, Serrino; ARRAY 2026 at PLDI) built the closest thing to this,
-and reached the same two structural decisions independently: parse `.ttir`, and
-model floating point as exact reals. Their reference comes from
-`torch.compile`'s FX graph rather than from running `forward` on symbolic
-tensors, and they scalarise into Z3 directly; on 26 KernelBench Level 1 kernels
-they report 16 proved, 8 unknown, and **2 that passed numeric testing while being
-mathematically inequivalent**. Two efforts landing on the same IR and the same
-numeric model is a point in favour of both choices.
-
-What is here that is not there starts from their own stated limitation —
-*"differing use of floating point values can lead to accuracy bugs"* that the
-approach cannot address:
-
-- **Four checks besides value equality**, including the accuracy check that
-  answers exactly that limitation, and a memory check without which Sakana's
-  stale-buffer exploit is *equal* over the reals (the output is a buffer nobody
-  wrote).
-- **Hardware corroboration** before a FAIL is reported.
-- **AC normal form before any solver**, which decides 257 of 277 value questions
-  with no solver call at all; one Volta call per output *shape* rather than per
-  output element; and, where Volta's canonicalisation blows up, Mirage's
-  random-point evaluation over a finite field in front of it rather than a bigger
-  machine.
-- **A counterexample yields an axis**, which becomes a harness check that runs
-  without the judge.
-- **Corpus scale and split**: 400 compiler-generated rows and 156 LLM-written
-  ones, measured separately, because they fail in different ways.
-
-The two also bound the problem differently. They **truncate reductions** — sum a
-few terms instead of all of them — where this shrinks **shapes** and keeps every
-reduction whole. Both make the term graph small, but they are not the same
-approximation: truncation can hide a defect that only appears past the cut. On 40
-KernelBook rows with the cap at 4, **39 verdicts agree**, and the one that
-differs is a PASS becoming UNKNOWN rather than a missed defect
-(`tvj/measure/truncated.py`, hand-run: it has no `verify.py` claim). The reason
-is mundane — these kernels reduce over 4–16 elements, so a cap of 4 barely bites.
-The two choices are interchangeable *on this corpus*, not in general; a kernel
-whose reduction is where the bug lives would separate them, and neither corpus
-has one.
-
-Two more start from the same problem and answer it elsewhere.
-
-**[Dr. Kernel](https://arxiv.org/abs/2602.05885)** (Liu, Xu, Li, Zheng, Li, Liu,
-He; ICML 2026) is the closest work on reward hacking rather than on method: an RL
-environment, KernelGYM, that trains a policy to write Triton and treats hacking
-as a first-class problem instead of an afterthought. Its check is *launch
-presence* — a candidate that executes no Triton kernel in either mode is
-incorrect — which this judge also catches, by the same interception, as one of
-the seven documented hacks. What makes the paper useful here is the number it
-reports with that check switched on: **3 % of Level 2 and 1.7 % of Level 1 still
-hack**. That residue is the population this judge is for, and it is the only
-published source of exploits that emerged from a policy rather than from a paper.
-
-[*The Correctness Illusion in LLM-Generated GPU
-Kernels*](https://arxiv.org/abs/2606.20128) (Sarkar) answers the same observation
-with better fuzzing on the input axis. The axes here are ones a sampler does not
-reach — module parameters, stale memory, precision, numerical stability — and
-symbolic inputs remove the notion of a sampling blind spot rather than moving
-it.
+[Gimlet Labs](https://gimletlabs.ai/blog/formally-verifying-ai-generated-kernels)
+reached the same two decisions independently: read TTIR, and model floating
+point as reals. [Dr. Kernel](https://arxiv.org/abs/2602.05885) trains a policy to
+write Triton and reports that 3 % of its output still hacks past its own check.
+Volta and Mirage supply the decision procedures. What differs from each:
+[docs/prior-work.md](docs/prior-work.md).
 
 ## Layout
 
@@ -650,5 +159,5 @@ tvj/tools/     open one row and look at it       kb_debug  memcheck  traces_repr
 verify.py      re-runs all of the above and asserts every claim
 ```
 
-`tvj/judge/judge.py` is the whole judgement; both corpus runners are thin
-adapters over it. `PIPELINE.md` has the data flow.
+`tvj/judge/judge.py` is the whole judgement; the corpus runners are thin adapters
+over it.

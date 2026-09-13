@@ -24,9 +24,10 @@ witness corroborated on the GPU at relative 1e-4.
 
 - **V1  One shape.**  The theorem is at get_inputs()'s shape.  Every LLM-corpus
   input fits in one block, so pid arithmetic and multi-block tails were never
-  exercised; a kernel correct only there PASSes.  *Being measured*: shape-2 run,
-  `tvj/measure/shape2.py`.  The fix that changes the theorem is N symbolic within
-  a block-count band.
+  exercised; a kernel correct only there PASSes.  Measured on the LLM corpus at
+  two blocks and a tail (`tvj/measure/shape2.py`): 0 of 89 PASS rows moved, so no
+  kernel there exploits it -- which says nothing about a generator rewarded at one
+  shape.  The fix that changes the theorem is N symbolic within a block-count band.
 - **V2  Fixed integer data** (once integer inputs are concretised from the probe;
   today they are refused).  A kernel that hard-codes the probe's index pattern
   PASSes "for all real inputs at this index data".  Fresh draws per judgement are
@@ -48,8 +49,10 @@ witness corroborated on the GPU at relative 1e-4.
 - **V5  The spec front end.**  A wrong torch handler is invisible downstream; a
   generator cannot read the handlers but reward pressure walks toward whatever
   they compute.  The GPU gate corroborates FAILs, not PASSes, so a handler-shaped
-  PASS is uncorroborated.  The audit set is the cell "judge PASS, tolerance FAIL"
-  (10 rows today): every one is either a float effect or a handler bug.
+  PASS is uncorroborated.  The only outside check such a PASS gets is the cell
+  "judge PASS, tolerance FAIL": a handler bug that passes a wrong kernel shows up
+  there when the tolerance test happens to catch the kernel.  That cell is empty
+  in both corpora today; it is the first thing to read after every re-run.
   `spec_agree` (113 cases) is the standing defence; it needs a case per new
   handler.
 - **V6  pit's coin.**  False "equal" with probability about 2^-61 per query.  Not
