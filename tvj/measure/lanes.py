@@ -2,7 +2,7 @@
 
 A tile kernel applies the same computation to every lane, so its output terms are
 instances of a handful of shapes with different leaves: 1024 matmul outputs are
-one shape, 512 attention outputs are two.  The term pool stores each shape once
+one shape, and so are 512 attention outputs.  The term pool stores each shape once
 per lane, and the value obligation hands every lane to the decision procedure as
 its own pair.  Neither needs to.
 
@@ -32,10 +32,73 @@ class Shapes:
     `tuple.__eq__` walk the tree -- in C, so SIGALRM's Python handler never gets a
     bytecode boundary to run at.  KernelBook row 116 spun for ten minutes past a
     150 s alarm on exactly that.  Interning bottom-up keeps every node's key a
-    flat tuple of small ints: O(DAG) per pair, O(1) per hash and comparison."""
+    flat tuple of small ints: O(DAG) per pair, O(1) per hash and comparison.
+
+    The second version numbered leaves by first appearance in ARGUMENT order.
+    Add, Mul, max and min are AC, and the normal form orders their children by
+    term uid -- which is construction order, and differs from lane to lane.  So
+    KernelBook row 372's 256 outputs, structurally identical up to their leaves,
+    came out as 256 shapes, and grouping bought nothing.  Children of an AC node
+    are now visited in an order that depends only on the child's own structure
+    and leaves -- its leaf-blind shape, then its smallest leaf -- so the numbering
+    is the same in every lane.  Any deterministic order is sound (equal keys still
+    mean the same question up to renaming); this one is also complete for the
+    tile-regular case."""
+    AC = {"Add", "Mul", "max", "min"}
 
     def __init__(self):
         self.ids = {}                        # flat node key -> shape id
+        self.blind = {}                      # uid -> leaf-blind shape id (pair-independent)
+        self.blind_ids = {}
+        self.least = {}                      # uid -> per-buffer smallest index below
+
+    def _blind(self, t):
+        r = self.blind.get(t.uid)
+        if r is not None: return r
+        if isinstance(t, T.Sym): key = ("L",)
+        elif isinstance(t, T.Const): key = ("C", t.v)
+        else:
+            kids = [self._blind(a) for a in t.args]
+            if self._ac(t): kids.sort()
+            key = (type(t).__name__, getattr(t, "fn", None), tuple(kids))
+        r = self.blind_ids.get(key)
+        if r is None: r = self.blind_ids[key] = len(self.blind_ids)
+        self.blind[t.uid] = r
+        return r
+
+    def _least(self, t):
+        """Per BUFFER, the smallest index the subtree reads, as a sorted tuple of
+        (buf, min idx) -- memoised bottom-up, bounded by the number of buffers.
+        The tie-breaker after the leaf-blind shape when ordering an AC node's
+        children; bounded on purpose, since collecting every leaf helped take a
+        15 GB machine down on a 418k-node term.
+
+        What this does NOT do is make every row's lanes one shape.  KernelBook
+        row 372 stays 256 shapes with the order fully canonical, because its
+        lanes are not the same question up to renaming: a lane-independent leaf
+        inside every output coincides with the lane's own bias leaf in lane 0
+        and is a distinct leaf everywhere else, so the leaf-sharing pattern
+        differs.  Grouping is right to keep them apart."""
+        r = self.least.get(t.uid)
+        if r is not None: return r
+        if isinstance(t, T.Sym): r = ((t.buf, t.idx),)
+        elif isinstance(t, T.Const): r = (("~", t.v),)          # sorts after every buffer name
+        else:
+            acc = {}
+            for a in t.args:
+                for buf, idx in self._least(a):
+                    if buf not in acc or idx < acc[buf]: acc[buf] = idx
+            r = tuple(sorted(acc.items()))
+        self.least[t.uid] = r
+        return r
+
+    @classmethod
+    def _ac(cls, t):
+        return type(t).__name__ in cls.AC or getattr(t, "fn", None) in cls.AC
+
+    def _children(self, t):
+        if not self._ac(t): return t.args
+        return sorted(t.args, key=lambda a: (self._blind(a), self._least(a)))
 
     def of(self, t, leaves, memo):
         """Shape id of `t`, with Sym leaves numbered by first appearance in
@@ -48,7 +111,7 @@ class Shapes:
             key = ("C", t.v)
         else:
             key = (type(t).__name__, getattr(t, "fn", None),
-                   tuple(self.of(a, leaves, memo) for a in t.args))
+                   tuple(self.of(a, leaves, memo) for a in self._children(t)))
         r = self.ids.get(key)
         if r is None:
             r = self.ids[key] = len(self.ids)

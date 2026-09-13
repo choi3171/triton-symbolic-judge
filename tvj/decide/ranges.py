@@ -31,9 +31,21 @@ class Range:
         self.flags = tuple(flags)
     def __repr__(self): return f"[{self.lo:.3g}, {self.hi:.3g}]"
 
-def _max_leaves(t, acc):
+# A running max is initialised with a stand-in for -infinity -- `-1e30`,
+# `-3.4e38`, `float("-inf")` -- and terms.app already folds the exact -inf away.
+# A finite one survives into the term, and it broke both relational rules below:
+# `x in S` and `leaves(M) <= xs` both saw an extra member.  LLM row 50's kernel
+# then read as dividing by a sum bounded below by 0 -- a precondition FAIL at
+# |in| <= 41.8 that the reference, identical but for the sentinel, did not have.
+SENTINEL = -1e30
+
+def _max_leaves(t, acc, drop_below=SENTINEL):
+    """The leaves of a (nested) max, without constants at or below `drop_below`.
+    For R1 that is always sound: adding a member to a max cannot make x - max(S)
+    positive.  R2 needs more -- see `_softmax_denominator`."""
     if isinstance(t, T.App) and t.fn == "max":
-        for a in t.args: _max_leaves(a, acc)
+        for a in t.args: _max_leaves(a, acc, drop_below)
+    elif isinstance(t, T.Const) and t.v <= drop_below: pass
     else: acc.add(t)
     return acc
 
@@ -82,8 +94,14 @@ def _exp_minus_max(a):
     if not (isinstance(a, T.App) and a.fn == "exp"): return None
     return _scaled_max_split(a.args[0])
 
-def _softmax_denominator(t):
-    """Add whose args are all exp(k*x_j - k*M) with one k, one M, {x_j} covering leaves(M)."""
+def _softmax_denominator(t, floor=None):
+    """Add whose args are all exp(k*x_j - k*M) with one k, one M, {x_j} covering leaves(M).
+
+    `floor` is the smallest value any input can take in the range being analysed.
+    A sentinel constant in M is dropped from leaves(M) only when it is below that
+    floor: then some x_j attains the max and one term is exp(0).  Below the floor
+    the sentinel IS the max, every term underflows, and the division really is by
+    ~0 -- which is a precondition of the kernel, not an artifact, and is kept."""
     if not isinstance(t, T.Add): return False
     xs, M, K = set(), None, None
     for a in t.args:
@@ -93,13 +111,15 @@ def _softmax_denominator(t):
         if M is None: M, K = m, k
         elif m is not M or k != K: return False
         xs.add(x)
-    return M is not None and _max_leaves(M, set()) <= xs
+    drop = SENTINEL if floor is None else min(SENTINEL, floor - 1.0)
+    return M is not None and _max_leaves(M, set(), drop_below=drop) <= xs
 
 class Analysis:
     def __init__(self, inputs):
         """inputs: buf -> (lo, hi) for every element of that buffer."""
         self.inputs, self.memo = inputs, {}
         self.flagged = {}       # flag -> first term that raised it
+        self.floor = min((lo for lo, hi in inputs.values()), default=None)   # see _softmax_denominator
 
     def _flag(self, name, t):
         self.flagged.setdefault(name, t)
@@ -130,7 +150,7 @@ class Analysis:
             if _scaled_max_split(t) is not None:
                 hi = min(hi, 0.0)
             # R2:  sum_j exp(x_j - max(S)) >= 1 when {x_j} covers S: one term is exp(0).
-            if _softmax_denominator(t):
+            if _softmax_denominator(t, floor=self.floor):
                 lo = max(lo, 1.0)
             # R3:  an underflowing term whose magnitude is below half an ulp of the
             #      sum's lower bound cannot move the float sum: absorbed.

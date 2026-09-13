@@ -71,6 +71,10 @@ REF_RANK = {torch.float64: TOP, torch.float32: TOP,
 # orders of magnitude above that, and below this bar we would be charging the
 # kernel for ordinary rounding.
 ACC_GATE_REL = 1e-4
+# The Z3 stage's budgets: combined DAG nodes per pair before translation is
+# skipped, and wall-clock seconds for the whole stage.  See value_pass.
+Z3_NODES = int(os.environ.get("TVJ_Z3_NODES", 100_000))
+Z3_SECS = float(os.environ.get("TVJ_Z3_SECS", 60))
 # The same bar for the VALUE obligation's witness point, and relative for the same
 # reason.  It was absolute (`max|a-b| > 1e-4`), which is the exact measure this
 # project's own headline finding is about: KernelBook row 308 hides a 190 % relative
@@ -792,11 +796,24 @@ def judge(cand, timeout=150, tol_trials=5):
                 # lane, so grouping 256 lanes into 2 shapes still cost 256 Z3 calls and
                 # row 97 timed out after pit had said "differ" in 11 ms.
                 pw = [g for g in unproved if CS.has_piecewise(reps[g][0]) or CS.has_piecewise(reps[g][1])]
-                if pw:
-                    cs = CS.equivalent([reps[g] for g in pw])
-                    for g, r in zip(pw, cs):
-                        if r is True: decided_by[g] = "Z3"
-                    rec["casesplit"] = f"{sum(1 for r in cs if r is True)}/{len(pw)} shapes decided by case split"
+                # Two budgets Z3's own 5 s timeout does not cover.  Its TRANSLATION is
+                # unbounded: LLM row 92 is one output of 417,945 nodes (a soft clDice's
+                # nested min/max pools), and building that Z3 AST took the rest of the
+                # row alarm.  And it is per pair: 40 shapes x 5 s is 200 s.  A pair
+                # over either budget is skipped, not failed -- it falls to the witness
+                # like any other unproved pair.
+                big = [g for g in pw if T.size(reps[g][0]) + T.size(reps[g][1]) > Z3_NODES]
+                pw = [g for g in pw if g not in big]
+                if pw or big:
+                    won, t0 = 0, time.time()
+                    for k, g in enumerate(pw):
+                        left = Z3_SECS - (time.time() - t0)
+                        if left <= 0:
+                            rec["z3_budget_hit"] = len(pw) - k; break
+                        r = CS.equivalent([reps[g]], timeout_ms=int(min(5000, left * 1000)))[0]
+                        if r is True: decided_by[g] = "Z3"; won += 1
+                    if big: rec["z3_skipped_size"] = len(big)
+                    rec["casesplit"] = f"{won}/{len(pw)} shapes decided by case split"
                     unproved = [g for g in unproved if decided_by.get(g) != "Z3"]
             via = "+".join(k for k in ("Volta", "Z3", "pit") if k in decided_by.values()) or "AC"
             if not unproved: return "equal", via

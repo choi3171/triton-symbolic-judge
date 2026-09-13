@@ -86,7 +86,7 @@ finish there; Volta decides 14, Z3 one, and evaluation at random points 5. What 
 left after AC goes to Volta's exponential-polynomial procedure —
 **one representative per shape, not one per output element**: a tile kernel's
 outputs are a handful of shapes over different leaves (1024 matmul lanes are one
-shape, 2048 attention lanes are two), and Volta treats a leaf as an opaque
+shape, and so are 2048 attention lanes), and Volta treats a leaf as an opaque
 variable, so pairs with the same joint shape are one question up to renaming
 (`tvj/measure/lanes.py`). Z3 case splitting handles piecewise terms — the step
 [Volta's paper](https://arxiv.org/abs/2511.12638) says "could be handled by case

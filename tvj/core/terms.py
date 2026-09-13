@@ -176,10 +176,29 @@ def select(c, a, b):
     if a is b: return a
     return _hc(App("select", (c, a, b)))
 
+def positive(t):
+    """Provably > 0 over the reals from the term's shape alone: exp of anything, a
+    positive constant, and sums, products, quotients and square roots of such.
+    Narrow on purpose -- it is used to fold comparisons, and a wrong True here is a
+    false PASS."""
+    if isinstance(t, Const): return t.v > 0
+    if isinstance(t, (Add, Mul)): return all(positive(a) for a in t.args)
+    if isinstance(t, App):
+        if t.fn == "exp": return True
+        if t.fn in ("div", "sqrt"): return all(positive(a) for a in t.args)
+    return False
+
 def cmp(kind, a, b):
     a, b = lift(a), lift(b)
     if kind in ("eq", "le", "ge") and a is b: return TRUE
     if kind in ("ne", "lt", "gt") and a is b: return FALSE
+    # A softmax kernel guards its division with `sum(exp(.)) > 0`.  Over the reals
+    # that is not a condition, it is a fact, and leaving it as an opaque comparison
+    # made a select nobody can fold (LLM row 50: unprovable, numerically equal).
+    if b is ZERO and kind in ("gt", "ge", "ne") and positive(a): return TRUE
+    if a is ZERO and kind in ("lt", "le", "ne") and positive(b): return TRUE
+    if b is ZERO and kind in ("lt", "le", "eq") and positive(a): return FALSE
+    if a is ZERO and kind in ("gt", "ge", "eq") and positive(b): return FALSE
     return _hc(App("cmp:" + kind, (a, b)))
 
 def app(fn, *args):
