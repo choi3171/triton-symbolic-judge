@@ -55,6 +55,7 @@ def _const_bytes(v):
 # An n-ary Add/Mul is flattened into a binary chain for the arena, so the node
 # count runs several times the DAG size.  Cap it; a pair too big to serialise is
 # reported as unsupported, not crashed on.
+VOLTA_SECS = float(os.environ.get("TVJ_VOLTA_SECS", 60))
 NODE_CAP = int(os.environ.get("TVJ_NODE_CAP", 2_000_000))
 # Operand indices are u32 on the wire.  Raising the cap past that would make
 # `struct.error` the first sign of it, from inside a term walk.
@@ -149,7 +150,15 @@ def equivalent(pairs, budget=None):
                      *_side(sa, na, ca), *_side(sb, nb, cb),
                      _U32.pack(len(ra)), struct.pack(f"<{len(flat)}I", *flat)])
     env = dict(os.environ); env.setdefault("VOLTA_MEM_GB", "4")
-    p = subprocess.run([BIN], input=body, capture_output=True, env=env)
+    # Wall clock, separate from the term-op budget and the memory cap: reaching the
+    # 4 GB cap took Volta 122 s on KernelBook row 86 and the row alarm is 150 s, so
+    # the stages after it -- evaluation at random points, Z3, the witness -- never
+    # ran.  Past this many seconds the pair is undecided BY VOLTA, which is what the
+    # next stage exists for.  TVJ_VOLTA_SECS overrides.
+    try:
+        p = subprocess.run([BIN], input=body, capture_output=True, env=env, timeout=VOLTA_SECS)
+    except subprocess.TimeoutExpired:
+        raise Unsupported(f"Volta exceeded {VOLTA_SECS} s on this batch")
     if p.returncode != 0:
         tail = p.stderr.decode("utf-8", "replace")[-400:]
         if "memory allocation" in tail or "Cannot allocate" in tail or p.returncode == -9:

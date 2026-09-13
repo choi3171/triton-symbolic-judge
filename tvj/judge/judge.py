@@ -82,7 +82,11 @@ ACC_GATE_REL = 1e-4
 VAL_GATE_REL = 1e-4
 FATAL = ("overflow", "div-by-zero")          # precondition flags that make a result meaningless
 
-class Timeout(Exception): pass
+class Timeout(BaseException):
+    """The row alarm.  A BaseException, not an Exception: judge() has a dozen broad
+    `except Exception` blocks -- the probe, the tolerance trials, the GPU gate --
+    and an alarm landing inside one of them was swallowed and never re-armed, so
+    the row ran with no time bound at all.  Only `except Timeout` catches this."""
 signal.signal(signal.SIGALRM, lambda *a: (_ for _ in ()).throw(Timeout()))
 TO = Timeout                                  # traces_run imported this name
 
@@ -728,39 +732,92 @@ def judge(cand, timeout=150, tol_trials=5):
             once more after cashing those symbols in (delegate.expand)."""
             diff = [i for i in range(len(sf)) if sf[i] is not kterms[i]]
             if not diff: return "equal", "AC"
-            try: res, st = V.equivalent([(sf[i], kterms[i]) for i in diff], budget=BUDGET)
-            except V.Unsupported as e: return "unknown", str(e)[:70]
-            rec["volta_secs"] = round(st["secs"], 3)
-            errs = [x for x in res if isinstance(x, str)]
+            pairs = [(sf[i], kterms[i]) for i in diff]
+            # One Volta call per SHAPE, not per output element.  A tile kernel's
+            # outputs are a handful of shapes over different leaves, and Volta treats
+            # a leaf as an opaque variable, so pairs with the same joint shape are one
+            # question up to renaming and share a verdict.  Measured in
+            # measure/lanes.py: 2048 attention lanes are 2 shapes, and the pair that
+            # exceeded the 4 GB cap lane by lane decides in 0.14 GB.  TVJ_LANES=0 sends
+            # every lane, as before.
+            if os.environ.get("TVJ_LANES", "1") != "0":
+                from tvj.measure import lanes
+                groups = list(lanes.group(pairs).values())
+                rec["lanes"] = {"pairs": len(pairs), "shapes": len(groups)}
+            else:
+                groups = [[i] for i in range(len(pairs))]
+            reps = [pairs[ix[0]] for ix in groups]
+            decided_by = {}                       # group -> procedure that settled it True
+            try:
+                res_rep, st = V.equivalent(reps, budget=BUDGET)
+                rec["volta_secs"] = round(st["secs"], 3)
+            except V.Unsupported as e:
+                # the bridge gave up on the whole batch -- its address-space cap or the
+                # wall clock -- so every representative is undecided by Volta
+                res_rep, rec["volta_refused"] = [str(e)[:70]] * len(reps), str(e)[:70]
+            for g, r in enumerate(res_rep):
+                if r is True: decided_by[g] = "Volta"
+            # Stage 2b: what Volta could not canonicalise -- a cap, the term-op budget,
+            # the wall clock -- goes to evaluation at random points over a field
+            # (measure/pit.py).  The corpus rows in the caps bucket are all DEPTH: row 97
+            # is 256 lanes of 2 shapes and each representative alone exceeds the budget,
+            # so grouping cannot reach them and canonicalising cannot either.  pit's
+            # "equal" is probabilistic (error <= (d/2^61)^3 per pair) and is recorded as
+            # such; its "differ" is weaker than the procedure's and falls through to the
+            # stages below exactly as an AC mismatch does.  On by default -- it turned rows
+            # 61 and 97 from UNKNOWN into GPU-corroborated FAILs and four budget-bound rows
+            # into PASSes; TVJ_PIT=0 disables it.  The seed is drawn per judgement and kept.
+            if os.environ.get("TVJ_PIT", "1") != "0":
+                todo = [g for g, r in enumerate(res_rep) if isinstance(r, str)]
+                if todo:
+                    import random
+                    from tvj.measure import pit
+                    seed = random.SystemRandom().randrange(1 << 32)
+                    rec["pit"] = {"groups": len(todo), "seed": seed}
+                    try:
+                        pres, psec = pit.equal([reps[g] for g in todo], seed=seed)
+                        rec["pit"].update(equal=sum(1 for x in pres if x), secs=round(psec, 3))
+                        for g, r in zip(todo, pres):
+                            res_rep[g] = bool(r)
+                            if r: decided_by[g] = "pit"
+                    except pit.Unsupported as e:
+                        rec["pit"]["unsupported"] = str(e)[:60]
+            errs = [x for x in res_rep if isinstance(x, str)]
             if errs: return "unknown", errs[0][:70]
-            unproved = [i for i, x in zip(diff, res) if x is False]
-            via = "Volta"
+            unproved = [g for g, r in enumerate(res_rep) if r is False]     # GROUPS, not lanes
             if unproved:
                 # stage 3: Volta canonicalises `select` as an uninterpreted atom, so it
                 # cannot relate two piecewise functions written differently.  Hand those
-                # to Z3, which case-splits; Volta has already normalised the arithmetic.
-                pw = [i for i in unproved if CS.has_piecewise(sf[i]) or CS.has_piecewise(kterms[i])]
+                # to Z3, which case-splits.  On representatives: this used to run per
+                # lane, so grouping 256 lanes into 2 shapes still cost 256 Z3 calls and
+                # row 97 timed out after pit had said "differ" in 11 ms.
+                pw = [g for g in unproved if CS.has_piecewise(reps[g][0]) or CS.has_piecewise(reps[g][1])]
                 if pw:
-                    cs = CS.equivalent([(sf[i], kterms[i]) for i in pw])
-                    decided = {i for i, r in zip(pw, cs) if r is True}
-                    rec["casesplit"] = f"{len(decided)}/{len(pw)} decided by case split"
-                    unproved = [i for i in unproved if i not in decided]
-                    if decided: via = "Volta+Z3"
+                    cs = CS.equivalent([reps[g] for g in pw])
+                    for g, r in zip(pw, cs):
+                        if r is True: decided_by[g] = "Z3"
+                    rec["casesplit"] = f"{sum(1 for r in cs if r is True)}/{len(pw)} shapes decided by case split"
+                    unproved = [g for g in unproved if decided_by.get(g) != "Z3"]
+            via = "+".join(k for k in ("Volta", "Z3", "pit") if k in decided_by.values()) or "AC"
             if not unproved: return "equal", via
+            # stage 4: a numeric witness, on representatives.  A counterexample for the
+            # representative is one for its shape: every lane in the group is the same
+            # polynomial identity over renamed leaves, and it just failed.
             dom = dict(grid.bufsize); dom.update(sym_domain(sf, kterms))
             wit_points = [NUM.random_point(dom, l, h, seed=s) for s, (l, h) in
                           enumerate([(-1., 1.), (0.05, 1.), (0.5, 2.), (-1., 1.), (0.05, 1.), (0.5, 2.)])]
-            try: wit = NUM.witness([(sf[i], kterms[i]) for i in unproved], dom)
+            try: wit = NUM.witness([reps[g] for g in unproved], dom)
             except ValueError as e: return "unknown", f"no numeric witness ({e})"[:70]
             if all(w[0] is None for w in wit):
-                return "unknown", (f"{len(unproved)} outputs unproved; "
-                                   "no input point leaves both sides finite")
-            bad = [(i, w) for i, w in zip(unproved, wit) if w[0] is False]
+                n_lanes = sum(len(groups[g]) for g in unproved)
+                return "unknown", (f"{n_lanes} outputs unproved; no input point leaves both sides finite")
+            bad = [(g, w) for g, w in zip(unproved, wit) if w[0] is False]
             if not bad:
-                return "unknown", f"{len(unproved)} unprovable but numerically equal"
-            i, (_, (s, va, vb)) = bad[0]
-            only_spec, only_kern = diff_symbols([sf[k] for k, _ in bad], [kterms[k] for k, _ in bad])
-            return "differ", {"n": len(bad), "spec": va, "kernel": vb,
+                n_lanes = sum(len(groups[g]) for g in unproved)
+                return "unknown", f"{n_lanes} unprovable but numerically equal"
+            g0, (_, (s, va, vb)) = bad[0]
+            only_spec, only_kern = diff_symbols([reps[g][0] for g, _ in bad], [reps[g][1] for g, _ in bad])
+            return "differ", {"n": sum(len(groups[g]) for g, _ in bad), "spec": va, "kernel": vb,
                               "point": wit_points[s] if s < len(wit_points) else None,
                               "only_spec": only_spec, "only_kernel": only_kern}
 

@@ -12,3 +12,13 @@ This project depends on, but does not vendor, the following. `setup.sh` fetches 
 | [ppbhatt500/kernelbook-triton-multiturn-reasoning-traces](https://huggingface.co/datasets/ppbhatt500/kernelbook-triton-multiturn-reasoning-traces) | see dataset card | The same author's multi-turn traces; `num_turns` is how much selection pressure a row survived (`tvj/judge/multiturn.py`). |
 | [KernelBench-Verified](https://github.com/facebookresearch/kernel_bench_verified) (Meta) | see repository | Its `hidden_tests` are read by `tvj/measure/kbv_blindspot.py` to show that a kernel ignoring an identity-element parameter passes all four of its input variations. |
 | PyTorch (BSD-3), Z3 (MIT), NumPy (BSD-3), datasets (Apache-2.0) | | |
+
+Ideas taken from papers rather than code:
+
+- [Mirage](https://arxiv.org/abs/2405.05751) (Wu et al.) — deciding tensor-program
+  equivalence by evaluation at random points over a finite field, with `exp(x) = ω^x`
+  and exponents in a field of order dividing the base field's. `tvj/measure/pit.py`
+  is that encoding, used as the stage after Volta's canonicalisation.
+- Schwartz–Zippel — the bound that makes the above a decision procedure.
+- [GPUVerify](https://multicore.doc.ic.ac.uk/tools/GPUVerify/)'s two-thread reduction
+  is cited in the Limits section as what does *not* transfer from races to values.

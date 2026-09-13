@@ -79,13 +79,25 @@ failed.
 | **precondition** | does the real-number proof still mean anything in float32? | interval analysis with three relational rules |
 | **accuracy** | the same expression, arranged so float32 loses digits? | evaluate both terms in float32 and in float64, compare the *errors* |
 
-Value is decided in three stages, cheapest first. Terms are hash-consed and
+Value is decided in four stages, cheapest first. Terms are hash-consed and
 normalised for associativity and commutativity, so most pairs come out
 *identical* and no solver runs at all: **257 of 272** KernelBook value decisions
-finish there. Volta's exponential-polynomial procedure takes 14 more. Z3 case
-splitting handles piecewise terms — the step [Volta's
-paper](https://arxiv.org/abs/2511.12638) says "could be handled by case splits"
-and declines to take — and settles 1.
+finish there. What is left goes to Volta's exponential-polynomial procedure —
+**one representative per shape, not one per output element**: a tile kernel's
+outputs are a handful of shapes over different leaves (1024 matmul lanes are one
+shape, 2048 attention lanes are two), and Volta treats a leaf as an opaque
+variable, so pairs with the same joint shape are one question up to renaming
+(`tvj/measure/lanes.py`). Z3 case splitting handles piecewise terms — the step
+[Volta's paper](https://arxiv.org/abs/2511.12638) says "could be handled by case
+splits" and declines to take. And what Volta cannot canonicalise within its caps
+is decided by **evaluating both sides at random points over a finite field**
+(`tvj/measure/pit.py`, after [Mirage](https://arxiv.org/abs/2405.05751)'s
+encoding: `exp(x) = ω^x` with exponents in a field of order dividing the base
+field's, so `exp(a)·exp(b) = exp(a+b)` holds because the field says so). That
+never builds the normal form, so its cost is the DAG's size rather than the
+polynomial's; its "equal" is probabilistic, with error at most (d/2⁶¹)³ per pair,
+and is recorded as such — `via: pit`, with the seed. The seed is drawn fresh for
+every judgement.
 
 AC does that much of the work because of **delegation**: when both sides hand the
 same operation to the same library call with the same arguments, it becomes one
@@ -297,13 +309,18 @@ Attention at D=16, BM=BN=16, comparing three formulations pairwise:
 | 128 | 8 | 2048 | 206.8 M |
 | 256 | 16 | 4096 | 349 M–509 M |
 
-**The cost of deciding is dominated by the difference in shape between the two
-kernels, not by their size.** At L=128 the bridge peaks at 0.56 GB for ref vs
-safe, 0.77 GB for safe vs flash, and **9.19 GB for ref vs flash** — twelve times
-more for the same problem. The reason: the naive reference does not subtract the
-max, so its exponential polynomial cannot share the `−m` atom and the cross
-products expand. Write the reference max-subtracted and the same comparison fits
-in under a gigabyte.
+**The cost of deciding is per shape, and it is dominated by the difference in
+shape between the two kernels, not by their size.** Lane by lane, at L=128 the
+bridge peaks at 0.56 GB for ref vs safe, 0.77 GB for safe vs flash, and **9.19 GB
+for ref vs flash** — twelve times more for the same problem, because the naive
+reference does not subtract the max, so its exponential polynomial cannot share
+the `−m` atom and the cross products expand. Deciding one representative per
+shape instead, the same ref vs flash pair at L=128 — which exceeds a 4 GB cap
+lane by lane — decides in **0.14 GB and 0.31 s**, every lane getting the verdict
+the lane-by-lane run gives; at L=64 it is 1.04 GB → 0.03 GB, and across the pairs
+both paths can run, 154× less Volta time (`tvj/measure/lanes.py`). What that
+leaves is the per-shape cost, which is a matter of multiplicative depth rather
+than of size — the paragraph on caps below.
 
 At L=256 the well-shaped pairs stay under 4.5 GB in Volta while *our* Python side
 reaches 7.6 GB. That figure predates the bridge's binary wire format: handing one
@@ -352,24 +369,37 @@ removes the bucket entirely — and that is not a concession, because a torch ta
 also costs a launch and a materialised intermediate. The constraint that makes a
 kernel analysable is the one that makes it fast.
 
-**Our caps are steerable.** 13 of those 20
-rows died on a cap that applies to the *pair* of term graphs rather than to the
-row — Volta's address space, or its term-operation budget, both reached while
-canonicalising two differently-shaped kernels. The Cost section measures what
-that is worth: holding the reference fixed, one correct kernel decides in 0.56 GB
-and another in 9.19 GB, and the expensive one is the *faster* one.
-`tvj/measure/steerable.py` is that as a demonstration rather than an argument: the
-three formulations are pairwise equal over the reals, the dearest pair costs ten
-times the cheapest to decide, and at a cap between them the judge decides two of
-the three correct kernels and returns UNDECIDED on the third. The reference did
-not change and neither did the cap — only the shape of the kernel. Three more
-rows sat within 0.01 % of our own term budget, 8,000,260 against 8,000,000.
-Volta's paper expects none of this. Canonicalisation "may cause exponential
-blowup", it says, but "since machine learning workloads do not typically have
-computations with high multiplicative depth, this blowup does not happen in
-practice". On these two corpora it happens 13 times in 556 rows — which is a
-measured counterexample to the assumption our own decision procedure rests on,
-not only a complaint about our caps.
+**Our caps are steerable — along one axis now, not two.** 13 of those 20 rows
+died inside Volta, on its address space or its term-operation budget. Two things
+can put a pair there. *Width* — many lanes of the same shape, each canonicalised
+separately — used to: holding the reference fixed, one correct attention kernel
+decided in 0.56 GB and another in 9.19 GB, and the expensive one was the faster
+one (`tvj/measure/steerable.py` demonstrates it: three formulations pairwise
+equal over the reals, a cap between the cheapest and the dearest, and the judge
+decides two and returns UNDECIDED on the third). Deciding one representative per
+shape closes that axis: the 9.19 GB pair is 0.14 GB. *Depth* remains. The 13
+corpus rows are all depth — row 97 is 256 lanes of 2 shapes and each
+representative alone exceeds the budget; row 61 is 679 nodes per output and
+canonicalising one of them exceeds 3 GB. What blows up is the normal form, a sum
+of products of atoms, which is exponential in multiplicative depth and nearly
+independent of the DAG's size. Volta's paper expects none of this:
+canonicalisation "may cause exponential blowup", it says, but "since machine
+learning workloads do not typically have computations with high multiplicative
+depth, this blowup does not happen in practice". On these two corpora it happens
+13 times in 556 rows — a measured counterexample to the assumption the decision
+procedure rests on.
+
+Evaluation at random points does not build the normal form, and on the same 4 GB
+machine it decides 6 of those 13: rows 86, 310, 318 and 328 PASS, and **rows 61
+and 97 FAIL, with a numeric witness the GPU reproduces** — the two of the
+thirteen that fail the corpus' own tolerance test. Of the seven it does not
+decide, each has a name: row 116 has an `exp` inside an exponent, outside the
+fragment the field encoding covers; row 363 spends 137 s in symbolic execution
+and the spec before any decision runs; three LLM rows separate at random points
+for a reason the numeric witness cannot then exhibit (an identity inside an
+opaque atom — the encoding's stated weakness); and two separate at the witness
+but the GPU does not reproduce it, which is our modelling gap and is reported as
+such.
 
 **And the bucket is not neutral.** 6 of the 15 KernelBook rows that hit one of
 our caps fail the corpus' own tolerance test, against 23 of the 300 decided rows
@@ -379,13 +409,15 @@ FAIL the GPU reproduces at the witness point: rows 137, 194, 196 and 233, by 1.8
 0.25, 1.2 and 0.43. The caps were not holding rows nobody had got to. They were
 holding defects.
 
-The two that do not come back are the two blocked inside Volta rather than by a
-cap of ours, and 24 GB is not enough for either. One is row 61, where reading the
-generated wrapper settles it without the judge at all: `Attention.forward(self,
-k, q)` takes k first, and the wrapper hands `w_k` the second input and `w_q` the
-first — both `(4, 4, 1, 4)`, so `assert_size_stride` is satisfied. The GPU
-disagrees by 0.26, deterministically. It is a defect we can name, in a corpus we
-published, that this method cannot reach.
+The two that do not come back that way are the two blocked inside Volta rather
+than by a cap of ours, and 24 GB is not enough for either. One is row 61, where
+reading the generated wrapper settles it without the judge at all:
+`Attention.forward(self, k, q)` takes k first, and the wrapper hands `w_k` the
+second input and `w_q` the first — both `(4, 4, 1, 4)`, so `assert_size_stride`
+is satisfied. The GPU disagrees by 0.26, deterministically. Memory does not reach
+it; evaluation at random points does, in 9 ms, and the row is a FAIL. Raising
+the caps buys the alarm- and term-budget-bound part of this bucket; the
+random-point stage buys the Volta-bound part; what neither buys is named above.
 
 The number is not the reason; the representation is. A term graph is proportional
 to the **work a kernel does rather than to the program that does it** — a tiled
@@ -398,8 +430,10 @@ enumerated, integers are concrete because that is what makes the memory check a
 dictionary lookup, and a branch on a loaded value is refused because there is
 nothing symbolic to split. It is a trade rather than a mistake — the same
 unrolling is why AC decides 257 of 272 value questions with no solver call, since
-everything is ground. But a row over a cap is reported UNKNOWN rather than FAIL,
-so a kernel that is wrong *and* expensive to canonicalise is not judged wrong;
+everything is ground. A row over a cap is reported UNKNOWN rather than FAIL, so a
+kernel that is wrong *and* expensive to canonicalise used to go unjudged; the
+random-point stage judges it wherever the field encoding applies, and rows 61 and
+97 are what that is worth. Outside the fragment the axis is still open;
 and unlike the TTIR bucket, this one needs no unusual operation at all. No
 policy has been observed trying — that is the third claim under the adversary
 heading below.
@@ -475,6 +509,18 @@ is what that looks like in practice: it was found by reading the class against
 `torch.Tensor`, not by any test, and the regression cases were added afterwards.
 The honest claim is the process, not the outcome.
 
+One PASS is probabilistic by construction. When Volta cannot canonicalise a pair,
+equality is decided by agreement at random points over a finite field, with error
+at most (d/2⁶¹)³ per pair; such a row says `via: pit` and carries its seed. The
+seed is drawn fresh for every judgement, which is what makes this safe under
+optimisation pressure: a kernel that is not equal passes with probability ~2⁻¹⁸³
+each time it is judged, and a policy cannot climb a reward that never arrives.
+The encoding's own boundary is stated rather than hidden — the exponent field is
+not the reals, so `exp(q·x) = 1` in it, and the guarantee holds for expressions
+whose coefficient arithmetic stays below q ≈ 2⁶¹. float32 constants are dyadic
+with 24-bit numerators, so no product of them reaches q and no practical sum
+does; an expression built to cross it would be visible as such.
+
 ## Prior work
 
 **[Gimlet Labs](https://gimletlabs.ai/blog/formally-verifying-ai-generated-kernels)**
@@ -497,7 +543,10 @@ approach cannot address:
   wrote).
 - **Hardware corroboration** before a FAIL is reported.
 - **AC normal form before any solver**, which decides 257 of 272 value questions
-  with no solver call at all.
+  with no solver call at all; one Volta call per output *shape* rather than per
+  output element; and, where Volta's canonicalisation blows up, Mirage's
+  random-point evaluation over a finite field in front of it rather than a bigger
+  machine.
 - **A counterexample yields an axis**, which becomes a harness check that runs
   without the judge.
 - **Corpus scale and split**: 400 compiler-generated rows and 156 LLM-written
@@ -544,7 +593,7 @@ tvj/front/     getting terms out of torch and the GPU   spec  capture  torchtrac
 tvj/judge/     the judge and the corpus runners  judge  kernelbook_run  traces_run  record  report  testgen
 tvj/fixtures/  kernels and references the checks use    kernels  attn  hacks  sm  probes  mutants
 tvj/checks/    scripts that assert something     check  spec_test  spec_agree  delegate_test  ...
-tvj/measure/   scripts that measure something    difftest  ieee_gap  limits  directives  relcompare  ...
+tvj/measure/   scripts that measure something    difftest  ieee_gap  lanes  pit  limits  directives  relcompare  ...
 tvj/tools/     open one row and look at it       kb_debug  memcheck  traces_repro
 verify.py      re-runs all of the above and asserts every claim
 ```

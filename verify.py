@@ -251,6 +251,12 @@ claim("record_test.py", "a scratch record left in data/ reaches no report, and p
        r"ok  rows it re-judged replace theirs; every other row stays as published",
        r"record precedence and publishing hold"])
 
+claim("lanes.py", "one Volta call per SHAPE, not per output element: 1024 matmul lanes are one shape and 512 attention lanes are two, and deciding a representative per shape gives every lane the verdict the full lane-by-lane run gives, controls included",
+      [r"mm vs splitk\s+1024\s+1\s", r"mm vs bug_k\s+1024\s+1\s+0/1024",
+       r"ref vs flash\s+512\s+2\s+512/512", r"ref vs norescale\s+512\s+2\s+0/512",
+       r"shared DAG, depth 60 \(\d+ nodes, 2\^60 unfolded\): grouped in [\d.]+ ms, 2 groups \(want 2\)",
+       r"Every propagated verdict matches the full run, controls included: ok"], args=("32",))
+
 # --- precondition layer ------------------------------------------------------
 claim("precond2.py", "float-validity preconditions: naive softmax |x|<=86.64, safe softmax unbounded; naive attention overflows at |q|,|k|<=10",
       [r"softmax_naive\s+inputs in \[-100,100\]:\s+overflow x16",
