@@ -44,7 +44,27 @@ done
 
 # Volta's decision procedure (MIT).  We use only volta_analysis::canon; its PTX
 # frontend is never invoked -- see PIPELINE.md.
+#
+# Pinned.  A value verdict rests on this decision procedure, so it is reproducible
+# only against the version that produced it: the canonical form, what counts as an
+# opaque atom and the default term-operation budget all come from this checkout.
+# Unpinned, ../volta was whatever HEAD the clone happened to land on, and an
+# existing checkout was used as found.  Set VOLTA_SHA to judge with another version
+# on purpose.
+VOLTA_SHA=${VOLTA_SHA:-5d7530cc7fbef656c3fbeac22c6529441e4db70c}
 [ -d ../volta ] || git clone https://github.com/willtunnels/volta.git ../volta
+volta_have=$(git -C ../volta rev-parse HEAD 2>/dev/null || echo none)
+if [ "$volta_have" != "$VOLTA_SHA" ]; then
+  if [ -n "$(git -C ../volta status --porcelain 2>/dev/null)" ]; then
+    echo "setup: ../volta is at $volta_have with local changes, and the judge is pinned to"
+    echo "  $VOLTA_SHA.  Commit or stash them there, or set VOLTA_SHA to the version you mean."
+    exit 1
+  fi
+  echo "setup: moving ../volta from $volta_have to the pinned $VOLTA_SHA"
+  git -C ../volta fetch --quiet origin 2>/dev/null || true
+  git -C ../volta checkout --quiet "$VOLTA_SHA" || {
+    echo "setup: could not check out Volta $VOLTA_SHA in ../volta"; exit 1; }
+fi
 ( cd bridge && cargo build --release )
 
 mkdir -p data
