@@ -44,7 +44,7 @@ so a disagreement falls through to the stages after this one (Z3 case splits,
 the numeric witness), exactly as an AC mismatch does.  The judge runs it on what
 Volta could not decide, not in place of Volta.
 
-    python3 -m tvj.measure.pit [L]
+    python3 -m tvj.decide.pit [L]
 """
 import random, sys, time
 from fractions import Fraction

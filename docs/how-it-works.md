@@ -49,11 +49,11 @@ Counts from `results/report.txt`.
 
 Terms are hash-consed and normalized for associativity and commutativity, so most pairs come out identical and no solver runs.
 
-What is left goes to Volta's exponential-polynomial procedure, one representative per shape instead of one call per output element. A tile kernel's outputs fall into a few shapes over different leaves, e.g. 1024 matmul lanes are one shape, and so are 512 attention lanes. Volta treats a leaf as an opaque variable, so pairs with the same joint shape are the same question up to renaming (`tvj/measure/lanes.py`).
+What is left goes to Volta's exponential-polynomial procedure, one representative per shape instead of one call per output element. A tile kernel's outputs fall into a few shapes over different leaves, e.g. 1024 matmul lanes are one shape, and so are 512 attention lanes. Volta treats a leaf as an opaque variable, so pairs with the same joint shape are the same question up to renaming (`tvj/decide/lanes.py`).
 
 Z3 case splits handle piecewise terms, which [Volta's paper](https://arxiv.org/abs/2511.12638) says "could be handled by case splits" but does not do. Z3 only runs on shapes that random real points cannot already separate, since a pair that separates by a clear margin is not equal.
 
-What Volta cannot canonicalize within its caps is decided by evaluating both sides at random points over a finite field (`tvj/measure/pit.py`). The encoding follows [Mirage](https://arxiv.org/abs/2405.05751): values live in Z_p and `exp(x) = ω^x`, where ω has order q and q divides p−1, so exponents are taken mod q and `exp(a)·exp(b) = exp(a+b)` holds. An exp nested inside another exp's exponent becomes an opaque atom, as max and min already are. This never builds the normal form, so its cost follows the size of the DAG, not of the polynomial. Its "equal" is probabilistic, with error at most (d/2⁶¹)³ per pair, and the verdict records it as `via: pit` with the seed. The seed is drawn fresh for every judgment.
+What Volta cannot canonicalize within its caps is decided by evaluating both sides at random points over a finite field (`tvj/decide/pit.py`). The encoding follows [Mirage](https://arxiv.org/abs/2405.05751): values live in Z_p and `exp(x) = ω^x`, where ω has order q and q divides p−1, so exponents are taken mod q and `exp(a)·exp(b) = exp(a+b)` holds. An exp nested inside another exp's exponent becomes an opaque atom, as max and min already are. This never builds the normal form, so its cost follows the size of the DAG, not of the polynomial. Its "equal" is probabilistic, with error at most (d/2⁶¹)³ per pair, and the verdict records it as `via: pit` with the seed. The seed is drawn fresh for every judgment.
 
 ## Delegation
 

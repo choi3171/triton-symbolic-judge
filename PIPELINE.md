@@ -159,7 +159,7 @@ kernel:  grid.store[("out", physical_offsets(out)[i])]
 
 | obligation | what it asks | how |
 |---|---|---|
-| **value** | the same expression over the reals? | AC normal form decides most pairs outright → Volta `check_equivalent`, on one representative per output shape (`measure/lanes.py`) → Z3 case splitting for piecewise terms → where Volta hit a cap, evaluation at random points over a finite field (`measure/pit.py`, probabilistic, seed recorded) → a **numeric witness** is required before a FAIL (without one, UNKNOWN) |
+| **value** | the same expression over the reals? | AC normal form decides most pairs outright → Volta `check_equivalent`, on one representative per output shape (`decide/lanes.py`) → Z3 case splitting for piecewise terms → where Volta hit a cap, evaluation at random points over a finite field (`decide/pit.py`, probabilistic, seed recorded) → a **numeric witness** is required before a FAIL (without one, UNKNOWN) |
 | **memory** | does it read what nothing wrote, skip an output, or race with itself? | the errors `sexec` records over the whole grid: unwritten-buffer reads, out-of-bounds, write conflicts, read-write races |
 | **precision** | is the optimised side not *less* precise than the reference? | the lattice `exact > ieee > tf32x3 > tf32 > f16 > bf16`, tracked per term, compared against the reference's own output dtype |
 | **precondition** | over what input range does the real-number proof still say something about float32? | interval analysis in `tvj/decide/ranges.py` plus three softmax relational rules; validity radii compared |

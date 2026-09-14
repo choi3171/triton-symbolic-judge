@@ -17,7 +17,7 @@ every pair the way `judge.value_pass` does today.  Whether it pays is a number -
 pairs sent to Volta before and after, and the seconds -- and whether it is
 sound is a comparison, lane by lane.
 
-    python3 -m tvj.measure.lanes [L]
+    python3 -m tvj.decide.lanes [L]
 """
 import sys, time
 from tvj.core import terms as T
@@ -227,7 +227,7 @@ if __name__ == "__main__":
     child = """
 import time
 from tvj.core import terms as T
-from tvj.measure import lanes
+from tvj.decide import lanes
 x = T.sym("dag0", 0); y = T.sym("dag1", 0); z = T.sym("dag2", 0)
 for i in range(60):
     x = T.add(T.mul(x, x), T.const(float(i + 1))); y = T.add(T.mul(y, y), T.const(float(i + 1)))

@@ -12,7 +12,7 @@ two outputs differ only in the order of an AC node's children.
 """
 import sys, time, json, copy, collections, cProfile, pstats, io, torch
 from tvj.core import terms as T
-from tvj.measure import lanes, pit
+from tvj.decide import lanes, pit
 from tvj.decide import delegate as DEL
 from tvj.front.capture import capture, Launch, Extern, symbolic_run, base_of, physical_offsets
 from tvj.front.spec import STensor, symbolic_module
@@ -124,7 +124,7 @@ if len(groups) > max(2, len(pairs) // 4) and len(pairs) > 1:
 
 if "--diff-lanes" in sys.argv and len(pairs) > 1:
     # which SIDE makes out[0] and out[1] different shapes, and where
-    from tvj.measure.lanes import Shapes
+    from tvj.decide.lanes import Shapes
     for side, ts in (("spec", sf), ("kernel", kterms)):
         sh = Shapes(); ids = [sh.of(ts[k], {}, {}) for k in (0, 1)]
         print(f"lane-diff {side:6}: out[0] shape {ids[0]}  out[1] shape {ids[1]}  {'SAME' if ids[0] == ids[1] else 'DIFFERENT'}")

@@ -95,12 +95,12 @@ More in [docs/limits.md](docs/limits.md) and [docs/caps.md](docs/caps.md).
 
 ```
 tvj/core/      term algebra and semantics      terms  ttir  sexec  semantics  bounded
-tvj/decide/    deciding whether two terms agree  volta_bridge  casesplit  numeric  ranges  accuracy  delegate
+tvj/decide/    deciding whether two terms agree  volta_bridge  lanes  pit  casesplit  numeric  ranges  accuracy  delegate
 tvj/front/     getting terms out of torch and the GPU   spec  capture  torchtrace  shapes
 tvj/judge/     the judge and the dataset runners  judge  kernelbook_run  traces_run  shape2_run  record  report  testgen
 tvj/fixtures/  kernels and references the checks use    kernels  attn  hacks  sm  probes  mutants
 tvj/checks/    scripts that assert something     check  spec_test  spec_agree  delegate_test  ...
-tvj/measure/   scripts that measure something    difftest  ieee_gap  lanes  pit  nf_rat  limits  shape2  directives  relcompare  ...
+tvj/measure/   scripts that measure something    difftest  ieee_gap  nf_rat  limits  shape2  directives  relcompare  ...
 tvj/tools/     open one row and look at it       kb_debug  memcheck  traces_repro
 verify.py      runs the checks and measurements above
 ```

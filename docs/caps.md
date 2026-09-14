@@ -15,7 +15,7 @@ Attention at D=16, BM=BN=16, three formulations compared pairwise:
 
 Deciding a pair lane by lane, the cost depends on how different the two kernels are, not on their size. At L=128 the bridge peaks at 0.56 GB for ref vs safe, 0.77 GB for safe vs flash, and 9.19 GB for ref vs flash. That is twelve times more for the same problem, because the naive reference does not subtract the max, so its exponential polynomial cannot share the `−m` atom and the cross products expand.
 
-With one representative per shape, the same ref vs flash pair at L=128, which exceeds a 4 GB cap lane by lane, is decided in 0.14 GB and 0.31 s, and every lane gets the verdict the lane-by-lane run gives. At L=64 it goes from 1.04 GB to 0.03 GB, and across the pairs both paths can run, Volta time drops 154× (`tvj/measure/lanes.py`).
+With one representative per shape, the same ref vs flash pair at L=128, which exceeds a 4 GB cap lane by lane, is decided in 0.14 GB and 0.31 s, and every lane gets the verdict the lane-by-lane run gives. At L=64 it goes from 1.04 GB to 0.03 GB, and across the pairs both paths can run, Volta time drops 154× (`tvj/decide/lanes.py`).
 
 At L=256 the well-shaped pairs stay under 4.5 GB in Volta. On the Python side the cost is the term DAG, about 390 bytes per interned term, which is where the 8 M term budget comes from.
 

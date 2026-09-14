@@ -17,7 +17,7 @@ Ideas taken from papers rather than code:
 
 - [Mirage](https://arxiv.org/abs/2405.05751) (Wu et al.) — deciding tensor-program
   equivalence by evaluation at random points over a finite field, with `exp(x) = ω^x`
-  and exponents in a field of order dividing the base field's. `tvj/measure/pit.py`
+  and exponents in a field of order dividing the base field's. `tvj/decide/pit.py`
   is that encoding, used as the stage after Volta's canonicalisation.
 - Schwartz–Zippel — the bound that makes the above a decision procedure.
 - [GPUVerify](https://multicore.doc.ic.ac.uk/tools/GPUVerify/)'s two-thread reduction

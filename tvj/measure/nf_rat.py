@@ -21,14 +21,14 @@ heads on row 97, and 4 softmax rows over different slices of one input on row
 the equality check about 10^6 monomials per output on row 61, 10^11 on row 97.
 The paper's argument that blowup "does not happen in practice" is about
 multiplicative depth; this arrives through division, at depth 1.  Evaluation
-at random points (measure/pit.py) never forms the fraction, and separates these
+at random points (decide/pit.py) never forms the fraction, and separates these
 rows in milliseconds.
 """
 import copy, json, sys
 from collections import Counter
 import torch
 from tvj.core import terms as T
-from tvj.measure import lanes
+from tvj.decide import lanes
 from tvj.decide import delegate as DEL
 from tvj.front.capture import capture, Launch, Extern, symbolic_run, base_of, physical_offsets
 from tvj.front.spec import STensor, symbolic_module

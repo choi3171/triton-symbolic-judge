@@ -751,11 +751,11 @@ def judge(cand, timeout=150, tol_trials=5):
             # outputs are a handful of shapes over different leaves, and Volta treats
             # a leaf as an opaque variable, so pairs with the same joint shape are one
             # question up to renaming and share a verdict.  Measured in
-            # measure/lanes.py: 1024 matmul lanes are one shape and so are 512 attention
+            # decide/lanes.py: 1024 matmul lanes are one shape and so are 512 attention
             # lanes, and the pair that exceeded the 4 GB cap lane by lane decides in 0.14 GB.  TVJ_LANES=0 sends
             # every lane, as before.
             if os.environ.get("TVJ_LANES", "1") != "0":
-                from tvj.measure import lanes
+                from tvj.decide import lanes
                 t0 = time.time(); groups = list(lanes.group(pairs).values())
                 rec["t_lanes"] = round(rec.get("t_lanes", 0) + time.time() - t0, 3)
                 rec["lanes"] = {"pairs": len(pairs), "shapes": len(groups)}
@@ -774,7 +774,7 @@ def judge(cand, timeout=150, tol_trials=5):
                 if r is True: decided_by[g] = "Volta"
             # Stage 2b: what Volta could not canonicalise -- a cap, the term-op budget,
             # the wall clock -- goes to evaluation at random points over a field
-            # (measure/pit.py).  Rows 61 and 97 are the measured cases: one output's
+            # (decide/pit.py).  Rows 61 and 97 are the measured cases: one output's
             # rational normal form is ~1e6 and ~1e11 monomials (measure/nf_rat.py), so
             # grouping cannot reach them and canonicalising cannot either.  pit's
             # "equal" is probabilistic (error <= (d/2^61)^3 per pair) and is recorded as
@@ -786,7 +786,7 @@ def judge(cand, timeout=150, tol_trials=5):
                 todo = [g for g, r in enumerate(res_rep) if isinstance(r, str)]
                 if todo:
                     import random
-                    from tvj.measure import pit
+                    from tvj.decide import pit
                     seed = random.SystemRandom().randrange(1 << 32)
                     rec["pit"] = {"groups": len(todo), "seed": seed}
                     try:
