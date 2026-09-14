@@ -736,6 +736,64 @@ def judge(cand, timeout=150, tol_trials=5):
                 return rec
             return fail("value", f"{len(missing)}/{len(kterms)} outputs never written")
 
+        # --- torch before the kernels ------------------------------------------------
+        # A wrapper often prepares a kernel's inputs in PyTorch before launching it:
+        # LLM row 51 L1-normalises x and y and launches on the result, row 88 hands the
+        # kernel a torch.ones_like weight.  The kernel then loads from a buffer no role
+        # names, capture calls it tmpN, and every load is a free symbol -- so the pair
+        # can never be proved, and the witness gives tmpN a random value the GPU never
+        # sees, which is how rows 51, 88 and 92 reached "unreproducible on hardware".
+        # The ops that made the buffer are in the torch trace.  Replay them from the
+        # inputs and parameters -- the kernels' own writes are not seeded, so nothing
+        # after a launch can define what that launch read -- and put their terms where
+        # the free symbols are.  A buffer the replay cannot define stays free, so this
+        # can only let the obligations decide more, never decide differently.
+        free = sorted(b for b in sym_domain(kterms) if b.startswith("tmp"))
+        if free:
+            # All of it inside one guard: whatever goes wrong here leaves the free
+            # symbols where they were, which is the UNKNOWN the row had before.
+            try:
+                import numpy as np
+                head_seed = {}
+                for j, x in enumerate(inputs):
+                    if torch.is_tensor(x): head_seed[id(x)] = STensor.input(f"in{j}", tuple(x.shape))
+                for n, p in cand.params.named_parameters(): head_seed[id(p)] = STensor.input("p_" + n, tuple(p.shape))
+                for n, b in cand.params.named_buffers():    head_seed[id(b)] = STensor.input("b_" + n, tuple(b.shape))
+                # Seed by STORAGE as well as by object: the wrapper sees views of the
+                # inputs (x.view(B, C, -1) in row 51), and a view is a new object whose
+                # elements are the input's own.  Seeding it from its physical offsets
+                # does not depend on replaying the view op -- which matters, since
+                # inside the trace `view` is recorded under a name no handler matches.
+                # A storage an in-place op writes is left out: its offsets no longer
+                # hold the input.
+                mutated = {roles.get(root_storage(base_of(o))) for nm, _, _, o in tr.events
+                           if torch.is_tensor(o) and nm.endswith("_") and not nm.startswith("__")}
+                for _, a_, k_, o_ in tr.events:
+                    for t in list(a_) + list(k_.values()) + [o_]:
+                        if not torch.is_tensor(t) or id(t) in head_seed: continue
+                        role = roles.get(root_storage(base_of(t)))
+                        if role is None or role in mutated or not role.startswith(("in", "p_", "b_")): continue
+                        arr = np.empty(t.numel(), dtype=object)
+                        arr[:] = [T.sym(role, off) for off in physical_offsets(t)]
+                        head_seed[id(t)] = STensor(arr.reshape(tuple(t.shape)))
+                sym = TT.replay_all(tr.events, head_seed)
+                defined = {}
+                for _, _, _, o in tr.events:
+                    if not torch.is_tensor(o) or id(o) not in sym: continue
+                    role = roles.get(root_storage(base_of(o)))
+                    if role not in free: continue
+                    flat, offs = sym[id(o)].flat(), physical_offsets(o)
+                    if len(flat) != len(offs): continue
+                    slot = defined.setdefault(role, {})
+                    for off, term in zip(offs, flat): slot.setdefault(off, term)
+                if defined:
+                    size = sym_domain(kterms)
+                    table = {r: [d.get(k, T.sym(r, k)) for k in range(size[r])] for r, d in defined.items()}
+                    kterms = [T.substitute(t, table) for t in kterms]
+                    rec["head"] = {r: f"{len(d)}/{size[r]} elements" for r, d in defined.items()}
+            except Exception as e:
+                rec["head_error"] = f"{type(e).__name__}: {str(e)[:60]}"
+
         # --- obligation: value -------------------------------------------------
         def value_pass(sf, kterms):
             """Decide the value obligation for one pair of term lists.

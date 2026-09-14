@@ -141,6 +141,8 @@ claim("kernelbook_run.py", "KernelBook rows 0-40: >=28 PASS all with tol=True; e
 # tolerance test compares garbage with garbage and its verdict depends on whatever
 # the allocator left behind -- True here, False in a fresh clone.  That is the
 # finding; pinning it would make the claim depend on the nondeterminism it documents.
+claim("traces_run.py", "a wrapper that prepares the kernel's inputs in torch before launching it is decided, not left with free scratch symbols: LLM rows 88 (a torch.ones_like weight) and 92 (a max_pool3d chain) PASS once the torch ops before the launch are replayed",
+      [r"\[\s*88\] PASS", r"\[\s*92\] PASS"], args=("--rows", "88,92"), tag="gpu")
 claim("kernelbook_run.py", "KernelBook row 17: judge FAILs with a numeric witness the GPU reproduces, where the tolerance test is vacuous (uninitialised params, flagged DEGEN)",
       [r"\[ 17\] FAIL\s+tol=\S+\s+DEGEN\s+GatSymAttention\s+\d+ outputs differ; "
        r"witness spec=\S+ kernel=\S+; GPU reproduces at"],

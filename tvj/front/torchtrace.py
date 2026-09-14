@@ -73,6 +73,13 @@ def tensor_terms(t, roles, grid):
 def replay(events, seed, target):
     """Walk the recorded ops, computing terms wherever every tensor input is known.
     `seed` maps id(tensor) -> STensor.  Returns the STensor for `target`, or None."""
+    return replay_all(events, seed).get(id(target))
+
+
+def replay_all(events, seed):
+    """`replay`, returning every tensor it could compute: id(tensor) -> STensor.
+    A tensor is defined by the FIRST op that produced it, so an in-place op later in
+    the wrapper does not overwrite the value an earlier kernel launch read."""
     sym = dict(seed)
     def sub(x):
         if isinstance(x, torch.Tensor):
@@ -96,4 +103,4 @@ def replay(events, seed, target):
         except Exception: continue
         if isinstance(res, STensor): sym[id(out)] = res
         elif isinstance(res, T.Term): sym[id(out)] = STensor(np.array(res, dtype=object))
-    return sym.get(id(target))
+    return sym
