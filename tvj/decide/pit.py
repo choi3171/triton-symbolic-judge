@@ -69,6 +69,10 @@ def _omega():
 OMEGA = _omega()
 
 
+# Atoms whose value does not depend on the order of their arguments.
+COMMUTATIVE = frozenset({"max", "min", "and", "or", "cmp:eq", "cmp:ne"})
+
+
 class Unsupported(Exception):
     """Outside the fragment this evaluator can decide."""
 
@@ -128,8 +132,16 @@ class Point:
             # for a reason the pool's normal form does not see, and keying on uid
             # separated a pair Volta proves equal.  Evaluating the arguments first
             # is the same thing Volta does by canonicalising inside the atom.
-            key = (t.fn, tuple(self._eval(a, mod, memo, in_exponent) for a in t.args))
-            r = self._draw(mod, key)
+            vals = tuple(self._eval(a, mod, memo, in_exponent) for a in t.args)
+            # A commutative atom is keyed on its arguments as a multiset.  Keyed on
+            # their order, two equal terms came apart: the pool does not sort a
+            # comparison's arguments at all, so eq(u, w) and eq(w, u') arrive
+            # reversed, and it sorts max's by term uid, which reverses when one
+            # argument is the other rewritten and built later -- max(x*(y+z), v)
+            # against max(v, x*y + x*z).  Every other atom keeps its order:
+            # select(c, a, b) is not select(c, b, a), and lt(x, y) is not lt(y, x).
+            if t.fn in COMMUTATIVE: vals = tuple(sorted(vals))
+            r = self._draw(mod, (t.fn, vals))
         memo[t.uid] = r
         return r
 

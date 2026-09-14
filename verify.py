@@ -199,6 +199,8 @@ claim("op_coverage.py", "the corpora's 556 reference modules use 130 distinct op
       [r"556 reference modules, 130 distinct ops", r"\s+50\s+413\s+74\.3%"])
 claim("pit.py", "deciding by evaluation instead of by normal form: over a field with q | p-1 and exp(x) = w^x, the three attention formulations agree pairwise and the un-rescaled flash is separated -- including the ref/flash pair the decision procedure needs a gigabyte for",
       [r"random points decide every pair the way the procedure does, control included: ok"])
+claim("pit_test.py", "evaluation at random points does not say EQUAL where it must not: an atom that differs inside an argument, in its function, or in the order of a non-commutative argument separates; two terms equal inside an atom agree; and each false-PASS bug planted in pit.py's source fails a case",
+      [r"every case behaves as designed: ok", r"every planted bug is caught: ok"])
 claim("undecided.py", "the pairs neither Volta nor Z3 separates are a 5-second budget, not a gap between the two procedures",
       [r"BCE-with-logits.*\s+4\s+0\s+0\s+1\s+equal",
        r"Mish: both sides carry the threshold\s+256\s+256"])
