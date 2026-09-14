@@ -67,7 +67,25 @@ def random_point(bufsize, lo=-1.0, hi=1.0, seed=0):
     rng = random.Random(seed)
     return {b: [rng.uniform(lo, hi) for _ in range(n)] for b, n in bufsize.items()}
 
-def witness(pairs, bufsize, samples=6, seed=0, lo=-1.0, hi=1.0):
+# Where a counterexample is looked for, in the order `witness` reports its index in.
+# Signed first; then positive only, for anything defined only there (a log); then
+# NEGATIVE only -- appended after the rest, so every earlier point, and every
+# witness already found at one, stays exactly as it was.  Without the negative
+# points a max against a padding 0.0, which differs only where every argument is
+# negative, was found by luck: at a signed point six arguments are all negative
+# once in 64.  LLM row 53 (MaxPoolPad) was a FAIL while every output lane was
+# sampled at a point of its own, and became UNKNOWN once one representative per
+# shape was -- the same identity, with 31 fewer tries at it.
+WITNESS_RANGES = ((-1.0, 1.0), (0.05, 1.0), (0.5, 2.0), (-1.0, 1.0), (0.05, 1.0), (0.5, 2.0),
+                  (-1.0, -0.05), (-1.0, -0.05))
+
+
+def witness_points(bufsize, seed=0):
+    """The points `witness` evaluates at, indexed as its counterexamples are."""
+    return [random_point(bufsize, l, h, seed=seed + s) for s, (l, h) in enumerate(WITNESS_RANGES)]
+
+
+def witness(pairs, bufsize, seed=0):
     """For each (spec, kernel) pair, one of
         (True,  None)                      equal at every valid sample
         (False, (i, spec, kernel))         a counterexample
@@ -78,10 +96,7 @@ def witness(pairs, bufsize, samples=6, seed=0, lo=-1.0, hi=1.0):
     division by zero).  Judging on such a point reports a defect for
     `RMSE_log`-style kernels whose reference is itself NaN there.  We skip those
     points, and if no point leaves both sides finite we refuse to decide."""
-    import itertools
-    ranges = [(lo, hi), (0.05, 1.0), (0.5, 2.0)]      # signed, then positive domains
-    points = [random_point(bufsize, l, h, seed=seed + s)
-              for s, (l, h) in enumerate(itertools.islice(itertools.cycle(ranges), samples))]
+    points = witness_points(bufsize, seed)
     out = []
     for a, b in pairs:
         verdict, valid = (True, None), 0

@@ -851,10 +851,15 @@ def judge(cand, timeout=150, tol_trials=5):
             if not unproved: return "equal", via
             # stage 4: a numeric witness, on representatives.  A counterexample for the
             # representative is one for its shape: every lane in the group is the same
-            # polynomial identity over renamed leaves, and it just failed.
+            # polynomial identity over renamed leaves, and it just failed.  The converse
+            # does not hold for a sampler, and it is what one representative per shape
+            # leans on: the old lane-by-lane run tried the same identity at a fresh
+            # point per lane, so a region the points rarely reach got found by volume.
+            # The points now include that region (numeric.WITNESS_RANGES), and they
+            # come from the one list `witness` uses, so an index cannot name a
+            # different point here than it did there.
             dom = dict(grid.bufsize); dom.update(sym_domain(sf, kterms))
-            wit_points = [NUM.random_point(dom, l, h, seed=s) for s, (l, h) in
-                          enumerate([(-1., 1.), (0.05, 1.), (0.5, 2.), (-1., 1.), (0.05, 1.), (0.5, 2.)])]
+            wit_points = NUM.witness_points(dom)
             t0 = time.time()
             try: wit = NUM.witness([reps[g] for g in unproved], dom)
             except ValueError as e: return "unknown", f"no numeric witness ({e})"[:70]
