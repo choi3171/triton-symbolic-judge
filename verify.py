@@ -211,12 +211,13 @@ claim("harness_fixes.py", "honest counterpoint: how much of this a cheap harness
       [r"poisoned with NaN before the trial: False -> tolerance test PASSES",
        r"poisoned with NaN before the trial: True  -> tolerance test FAILS",
        r"the honest kernel still passes under poisoning: True"], tag="gpu")
-claim("testgen_validate.py", "an axis generalises where a point does not: two directives, each derived from one exploit, catch all 7 -- and the tolerance test catches none of them; and the source `emit` writes for every directive kind runs",
+claim("testgen_validate.py", "the checks testgen.emit writes, run on every row the record gives each directive and on every row the judge PASSes: vary-parameter catches all 31 rows it applies to, including the 9 the harness's own comparison passes, and stress-regime all 3; neither fails a single PASS row; vary-input writes nothing the harness does not already do",
       [r"4/4 emitted checks run",
-       r"7/7 exploits caught by two directives",
-       r"-> 4/4 caught by one directive", r"-> 3/3 caught by one directive",
-       r"42\s+BiasLayer\s+passes\s+CAUGHT\s+unseen",
-       r"114\s+GatedTanhUnit\s+passes\s+CAUGHT\s+unseen"], tag="gpu")
+       r"vary-parameter\s+caught 31/31; baseline-blind rows caught 9/9; false alarms 0/\d+",
+       r"stress-regime\s+caught 3/3; baseline-blind rows caught 3/3; false alarms 0/\d+",
+       r"vary-input\s+emits no code beyond the baseline",
+       r"every row the baseline passes and a directive applies to is caught by its emitted check: ok",
+       r"no emitted check fails a row the judge PASSes: ok"], tag="gpu")
 # Half the defects a review of this project turns up are not the kind anyone reads
 # their way to -- NaN never interning, `reset()` forgetting two singletons.  This
 # is the standing check for that class: properties over randomly generated terms,

@@ -39,6 +39,7 @@ when the record says that is the case, and swaps the comparison for the one the
 judge's own hardware gate uses -- scaled by the reference's magnitude.
 """
 import json, textwrap
+from tvj.decide import accuracy as ACC
 
 # What KernelBench's fp32 correctness check compares with; `judge.tolerance` uses
 # the same thresholds.  Named here because `compare-relative` exists to answer "can THAT see this?".
@@ -120,6 +121,7 @@ obligation    : {obligation}
 corroboration : {gpu}
 {why}
 """
+import copy
 import torch
 
 
@@ -173,6 +175,33 @@ def emit(rec, directives=None):
     body.append("            a, b = _first(reference(*xs)), _first(candidate(*xs))")
     body.append("        a, b = a.float(), b.float()")
     body.append("        if bool(((~torch.isfinite(b)) & torch.isfinite(a)).any()): return False")
+    if any(d.kind == "stress-regime" for d in directives):
+        # At the shifted magnitude the REFERENCE loses digits too, so comparing the two
+        # float32 results with each other fails kernels that are exactly as accurate as
+        # it: over every KernelBook and LLM row the judge PASSes, that failed two, AdaIN
+        # and a pairwise distance matrix, where both sides lose ~5e-3.  The accuracy
+        # obligation's own claim is the sharp one -- the reference is still usable and
+        # the kernel has already lost material digits, by a wide factor -- so that is
+        # what the check tests, against the reference run in float64.  The constants are
+        # written in, so the check does not import the judge.
+        body.append("        # The reference loses digits at this magnitude too: compare each side")
+        body.append("        # with the reference in float64, and fail only a kernel that has lost")
+        body.append("        # digits the reference kept (the accuracy obligation's criterion).")
+        body.append("        try:")
+        body.append("            with torch.no_grad():")
+        body.append("                e = _first(copy.deepcopy(reference).double()(*[x.double() if torch.is_tensor(x)")
+        body.append("                    and x.is_floating_point() else x for x in xs])).double()")
+        body.append("        except Exception:")
+        body.append("            continue")
+        body.append("        ok = torch.isfinite(a) & torch.isfinite(b) & torch.isfinite(e)")
+        body.append("        if not bool(ok.any()): continue")
+        body.append("        _s = max(float(e[ok].abs().max()), 1e-30)")
+        body.append("        _er = float((a.double() - e).abs()[ok].max()) / _s")
+        body.append("        _ek = float((b.double() - e).abs()[ok].max()) / _s")
+        body.append(f"        if _er < {ACC.REFERENCE_USABLE!r} and _ek > {ACC.KERNEL_MATERIAL!r} "
+                    f"and _ek > 100.0 * max(_er, {ACC.U32!r}): return False")
+        body.append("    return True")
+        return "\n".join(body) + "\n"
     body.append("        ok = torch.isfinite(a) & torch.isfinite(b)")
     body.append("        if not bool(ok.any()): continue")
     if rel_d is None:
