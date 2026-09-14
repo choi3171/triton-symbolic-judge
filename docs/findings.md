@@ -5,7 +5,7 @@ Rows where the tolerance test passes and the judge FAILs. The tolerance test is 
 | dataset | judged | tolerance passes, judge FAILs |
 |---|---|---|
 | 400 Inductor-generated (KernelBook) | 79 % | 6, with GPU differences at the witness point of up to 7.3 × 10³ |
-| 156 LLM-generated Triton | 64 % | 9: 6 on value, 3 on accuracy |
+| 156 LLM-generated Triton | 65 % | 10: 7 on value, 3 on accuracy |
 
 In all of them the tolerance test runs and sees nothing wrong.
 

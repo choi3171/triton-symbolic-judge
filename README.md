@@ -17,9 +17,9 @@ Two public datasets, all rows. The tolerance test is `allclose` with `atol=rtol=
 | dataset | rows | judged | tolerance test passes, judge FAILs |
 |---|---:|---:|---:|
 | [KernelBook](https://huggingface.co/datasets/GPUMODE/KernelBook), Inductor-generated Triton | 400 | 317 (79 %) | 6 |
-| [LLM-generated Triton](https://huggingface.co/datasets/ppbhatt500/kernelbook-triton-reasoning-traces) for KernelBook modules | 156 | 100 (64 %) | 9 |
+| [LLM-generated Triton](https://huggingface.co/datasets/ppbhatt500/kernelbook-triton-reasoning-traces) for KernelBook modules | 156 | 101 (65 %) | 10 |
 
-"Judged" means PASS, FAIL or PASS-ASSUMING. All 15 FAILs are reproduced on the GPU. No row in either dataset fails the tolerance test and passes the judge.
+"Judged" means PASS, FAIL or PASS-ASSUMING. All 16 FAILs are reproduced on the GPU. No row in either dataset fails the tolerance test and passes the judge.
 
 Example, KernelBook row 308 (`Critic`). The generated wrapper passes tensors into the wrong roles. They are all `(4, 4)`, so `assert_size_stride` passes. The output is around 1e-4, so the tolerance test's `atol=1e-2` hides a 190 % relative error.
 
@@ -59,7 +59,7 @@ Details: [docs/how-it-works.md](docs/how-it-works.md).
      table when one of them is missing, where it used to print "100 % hangs the
      judge" instead. -->
 
-**Judged coverage.** 79 % of 400 Inductor-generated rows, 64 % of 156 LLM-written rows.
+**Judged coverage.** 79 % of 400 Inductor-generated rows, 65 % of 156 LLM-written rows.
 
 |                                                            | KernelBook | LLM traces | can a generator steer into it? |
 |------------------------------------------------------------|------------|------------|--------------------------------|
@@ -71,7 +71,7 @@ Details: [docs/how-it-works.md](docs/how-it-works.md).
 | our plumbing failed to open the row                        | 0.2 %      | 1.3 %      | no                             |
 | the reference itself is random                             | 0.5 %      | 1.3 %      | no                             |
 | the row hangs the judge and never returns a verdict        | —          | —          | no                             |
-| **the method genuinely cannot decide**                     | 1.5 %      | 8.3 %      | —                              |
+| **the method genuinely cannot decide**                     | 1.5 %      | 7.7 %      | —                              |
 
 More in [docs/limits.md](docs/limits.md) and [docs/caps.md](docs/caps.md).
 

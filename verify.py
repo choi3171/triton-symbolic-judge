@@ -183,9 +183,9 @@ claim("delegate_test.py", "delegated library ops: the two spellings share a symb
 claim("report.py", "the value split is what the corpus record says: AC 257, pit 5, Volta 14, Volta+Z3 1",
       [r"value decided by:\s+\{'AC': 257, 'pit': 5, 'Volta': 14, 'Volta\+Z3': 1\}",
        r"the interesting cell: tolerance PASSES and the judge rejects -> 6"], args=("both",))
-claim("directives.py", "a counterexample yields an axis for 34 of the 46 FAILs, and only a point for 12; poison-output never fires on a natural corpus",
-      [r"46 FAILs over both corpora", r"KernelBook\s+an axis for 25 of 36",
-       r"LLM traces\s+an axis for 9 of 10", r"both\s+an axis for 34 of 46",
+claim("directives.py", "a counterexample yields an axis for 34 of the 47 FAILs, and only a point for 13; poison-output never fires on a natural corpus",
+      [r"47 FAILs over both corpora", r"KernelBook\s+an axis for 25 of 36",
+       r"LLM traces\s+an axis for 9 of 11", r"both\s+an axis for 34 of 47",
        r"poison-output\s+0\s+<- never on a natural corpus"])
 claim("relcompare.py", "a generated check has to see the row it came from: the relative comparison catches every trial where the harness's absolute one is blind, and stays silent on every PASS row",
       [r"relative catches every trial and absolute is blind on every row: ok",
