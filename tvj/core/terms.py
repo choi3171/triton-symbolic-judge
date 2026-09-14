@@ -4,7 +4,9 @@ Every interned term gets a sequential `uid`, and a compound term's key holds its
 children's uids rather than their keys.  The first version of this module built
 each key from the children's full keys, so hashing or comparing one cost O(size
 of the DAG below it), and a 128-deep nested max inside every element of a
-2048-element output made that quadratic.  (`git log -- tvj/core/` has it.)
+2048-element output made that quadratic.  That version is
+`git show dcdc981:terms_v1_structural_keys.py` -- a separate file at the root,
+from before the move into tvj/core/, so a log of this directory does not reach it.
 
 Within one pool identity == structure, so ordering arguments by uid is a
 canonical order, and `add`, `mul`, `max` and `min` can normalise for
