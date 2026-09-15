@@ -95,6 +95,19 @@ class Pred:
     def __init__(self, kind, a, b): self.kind, self.a, self.b = kind, a, b
     def negate(self): return Pred(_NEG[self.kind], self.a, self.b)
 
+def _int_leaves(u, memo=None):
+    """The values an integer can take, if it is a constant or a (nested) select
+    between such; None otherwise."""
+    if type(u) in (int, bool): return frozenset((int(u),))
+    if isinstance(u, T.Const):
+        return frozenset((int(u.v),)) if u.v == u.v and abs(u.v) != float("inf") and u.v == int(u.v) else None
+    if not (isinstance(u, T.App) and u.fn == "select"): return None
+    memo = {} if memo is None else memo
+    if u.uid not in memo:
+        a, b = _int_leaves(u.args[1], memo), _int_leaves(u.args[2], memo)
+        memo[u.uid] = None if a is None or b is None or len(a | b) > 4096 else a | b
+    return memo[u.uid]
+
 class Unsupported(Exception):
     """Kernel uses something outside the modelled fragment: verdict UNKNOWN."""
 TOP = RANK["exact"]
@@ -584,7 +597,19 @@ class Interp:
                     out.append(p if truth else p.negate())
                 put(Tile(shape, out)); return
             if any(isinstance(u, T.Term) for u in x.data + y.data):
-                raise Unsupported("comparison on an integer loaded from memory")
+                # An integer that is a select between constants -- the running index of
+                # Inductor's max-with-index reduction, where(a > b, 0, 1) -- has finitely
+                # many values.  When the comparison comes out the same for every one of
+                # them (`idx < 2` after two steps), its value is that.  Otherwise, or
+                # for an integer read from memory, refuse as before.
+                out = []
+                for u, v in zip(x.data, y.data):
+                    lu, lv = _int_leaves(u), _int_leaves(v)
+                    if lu is None or lv is None: raise Unsupported("comparison on an integer loaded from memory")
+                    truths = {bool(f(p, q)) for p in lu for q in lv}
+                    if len(truths) != 1: raise Unsupported("comparison on a data-dependent integer")
+                    out.append(truths.pop())
+                put(Tile(shape, out)); return
             put(Tile(shape, [f(u, v) for u, v in zip(x.data, y.data)]))
         elif n == "arith.select":
             c, x, y = bcast(a(0), shape), bcast(a(1), shape), bcast(a(2), shape)
