@@ -146,6 +146,14 @@ CASES = [
     ("renorm(p=2, dim=0)",        lambda x: torch.renorm(x * 3.0, 2, 0, 1.0), dict(x=(3, 4))),
     ("dot + mv",                  lambda a, m, v: a.dot(m.mv(v)),         dict(a=(3,), m=(3, 4), v=(4,))),
     ("conv1d unbatched",          lambda x, w, b: F.conv1d(x, w, b, 1, 1), dict(x=(3, 7), w=(4, 3, 3), b=(4,))),
+    # interpolate picks source positions in float32, as ATen does on the GPU; torch in
+    # float64 picks them in float64.  With a power-of-two scale the two coincide.
+    ("interpolate nearest sf=2",  lambda x: F.interpolate(x, scale_factor=2), dict(x=(1, 2, 3, 4))),
+    ("interpolate bilinear sf=2", lambda x: F.interpolate(x, scale_factor=2, mode="bilinear"), dict(x=(1, 2, 3, 4))),
+    ("interpolate bilinear ac",   lambda x: F.interpolate(x, size=(5, 7), mode="bilinear", align_corners=True),
+     dict(x=(1, 2, 3, 4))),
+    ("interpolate linear size",   lambda x: F.interpolate(x, size=8, mode="linear"), dict(x=(2, 1, 4))),
+    ("bilinear",                  lambda a, b, w, c: F.bilinear(a, b, w, c), dict(a=(3, 4), b=(3, 5), w=(2, 4, 5), c=(2,))),
     ("multi_head_attention_forward", lambda q, k, v, wi, bi, wo, bo: F.multi_head_attention_forward(
         q, k, v, 4, 2, wi, bi, None, None, False, 0.0, wo, bo, training=False, need_weights=False)[0],
      dict(q=(3, 2, 4), k=(5, 2, 4), v=(5, 2, 4), wi=(12, 4), bi=(12,), wo=(4, 4), bo=(4,))),
@@ -181,6 +189,7 @@ REFUSALS = [
     ("div(rounding_mode='floor')", lambda x: torch.div(x, 2.0, rounding_mode="floor"), dict(x=(3, 4))),
     ("div(rounding_mode='trunc')", lambda x: torch.div(x, 2.0, rounding_mode="trunc"), dict(x=(3, 4))),
     ("dropout(training=True)",     lambda x: F.dropout(x, 0.5, True),                  dict(x=(3, 4))),
+    ("interpolate(bicubic)",       lambda x: F.interpolate(x, scale_factor=2, mode="bicubic"), dict(x=(1, 1, 3, 3))),
     ("pad(negative)",              lambda x: F.pad(x, (-1, 1), mode="replicate"),      dict(x=(1, 2, 5))),
     ("mha(attn_mask=)",            lambda q, wi, wo, m: F.multi_head_attention_forward(
         q, q, q, 4, 2, wi, None, None, None, False, 0.0, wo, None, training=False, attn_mask=m)[0],

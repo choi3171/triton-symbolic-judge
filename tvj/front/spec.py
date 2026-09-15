@@ -787,6 +787,42 @@ def multi_head_attention_forward(query, key, value, embed_dim_to_check, num_head
         if unbatched: weights = weights.squeeze(0)
     return (out.squeeze(1) if unbatched else out), weights
 
+def interpolate(input, size=None, scale_factor=None, mode="nearest", align_corners=None,
+                recompute_scale_factor=None, antialias=False):
+    """F.interpolate for nearest and (bi/tri)linear.  Both pick source positions with
+    ATen's float32 arithmetic, because the kernel computes the same positions from
+    the same float32 constants: nearest is min(floor(j * scale), in - 1); linear is
+    the half-pixel position scale * (j + 0.5) - 0.5 clamped at 0 (or j * scale with
+    align_corners), interpolated one axis at a time as x0 + (x1 - x0) * frac."""
+    import math
+    if antialias or mode not in ("nearest", "linear", "bilinear", "trilinear"):
+        raise NotImplementedError(f"spec front-end: unsupported torch op interpolate(mode={mode})")
+    x = _st(input); nd = x.ndim - 2; f32 = np.float32
+    in_sz = x.shape[2:]
+    if size is not None: out_sz, given = _tup(size, nd), (None,) * nd
+    else:
+        sf = _tup(scale_factor, nd)
+        out_sz = tuple(int(math.floor(float(n) * s)) for n, s in zip(in_sz, sf))
+        given = (None,) * nd if recompute_scale_factor else sf
+    a = x.a
+    for d in range(nd):
+        n, o, axis = in_sz[d], out_sz[d], 2 + d
+        if mode == "nearest":
+            scale = f32(1.0 / given[d]) if given[d] else f32(n) / f32(o)
+            idx = [min(int(math.floor(f32(j) * scale)), n - 1) for j in range(o)]
+            a = np.take(a, idx, axis=axis); continue
+        if align_corners: scale = f32(n - 1) / f32(o - 1) if o > 1 else f32(0.0)
+        else: scale = f32(1.0 / given[d]) if given[d] else f32(n) / f32(o)
+        i0s, i1s, fr = [], [], []
+        for j in range(o):
+            src = scale * f32(j) if align_corners else max(scale * (f32(j) + f32(0.5)) - f32(0.5), f32(0.0))
+            i0 = min(int(src), n - 1)
+            i0s.append(i0); i1s.append(min(i0 + 1, n - 1)); fr.append(float(src - f32(i0)))
+        w = np.array([T.const(v) for v in fr], dtype=object).reshape([-1 if k == axis else 1 for k in range(a.ndim)])
+        lo, hi = np.take(a, i0s, axis=axis), np.take(a, i1s, axis=axis)
+        a = lo + (hi - lo) * w
+    return STensor(a)
+
 def einsum(equation, *operands):
     if len(operands) == 1 and isinstance(operands[0], (list, tuple)): operands = operands[0]
     r = np.einsum(equation.replace(" ", ""), *[_st(o).a for o in operands])
@@ -897,6 +933,10 @@ INFERRED_FROM_IMPL = {
     "gelu": "the tanh approximation's constants are torch's, not a definition",
     "softplus": "the `beta*x > threshold` guard returns x exactly; the crossover "
                 "is torch's choice, and the two branches are not equal over the reals",
+    "interpolate": "source positions: nearest takes floor(j * scale) clamped to the "
+                   "last index, linear the half-pixel scale*(j+0.5)-0.5 clamped at 0, "
+                   "both in float32 with scale = 1/scale_factor when one is given "
+                   "(ATen UpSample.h)",
     "binary_cross_entropy": "each log is clamped at -100 (ATen BinaryCrossEntropy), "
                             "so a probability of exactly 0 or 1 costs 100, not infinity",
 }
@@ -1004,6 +1044,8 @@ _TORCH = {
         _st(x).std(axis if dim is None else dim, keepdim, unbiased, correction),
     "norm": lambda x, p=2, dim=None, keepdim=False, out=None, dtype=None: _st(x).norm(p, dim, keepdim),
     "multi_head_attention_forward": multi_head_attention_forward, "kl_div": kl_div,
+    "bilinear": lambda input1, input2, weight, bias=None:
+        einsum("...i,kij,...j->...k", input1, weight, input2) + (bias if bias is not None else 0.0),
     "unflatten": lambda x, dim, sizes: _st(x).unflatten(dim, sizes),
     "renorm": lambda x, p, dim, maxnorm: _st(x).renorm(p, dim, maxnorm),
     "einsum": einsum, "prelu": prelu, "binary_cross_entropy": binary_cross_entropy,
@@ -1054,7 +1096,7 @@ _TORCH = {
     "logical_not": lambda a: STensor(np.frompyfunc(lambda t: T.app("not", t), 1, 1)(_st(a).a)),
     "masked_fill": lambda x, mask, v: _st(mask).where(STensor.full(_st(x).shape, float(v)), x),
     "batch_norm": batch_norm, "instance_norm": instance_norm, "group_norm": group_norm,
-    "interpolate": _unsupported("interpolate"),
+    "interpolate": interpolate,
     "zeros_like": lambda x, **k: STensor.full(_st(x).shape, 0.0), "ones_like": lambda x, **k: STensor.full(_st(x).shape, 1.0),
     "full_like": lambda x, fill_value, **k: STensor.full(_st(x).shape, float(fill_value)),
     "unsqueeze": lambda x, dim: _st(x).unsqueeze(dim), "squeeze": lambda x, d=None: _st(x).squeeze(d),
