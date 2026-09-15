@@ -11,6 +11,7 @@ from 128 to 2048 -- and judges the same kernel against the same reference there.
 
     ./run_shape2.sh                      (resumes; one process; results/tr_shape2.log)
     python3 -m tvj.judge.shape2_run --smoke 0,5      two rows, nothing recorded
+    python3 -m tvj.judge.shape2_run --rows 88        re-judge rows into the scratch record
 
 Records go to record.scratch("traces_shape2"), published like any corpus.  Per
 row: k, numel2, shapes2, and the judge's usual fields including `grids`.  Rows
@@ -138,6 +139,10 @@ if __name__ == "__main__":
         for i in (int(x) for x in sys.argv[2].split(",")):
             rec = judge_row(rows[i], i); print(line(i, rec), flush=True)
         sys.exit(0)
+    # A targeted re-judge, recorded and published by merging like every other runner's
+    # `--rows`: when the judge changes, the rows it changes at the corpus shape have to
+    # be re-judged here too, or the cross-table compares two versions of the judge.
+    only = {int(x) for x in sys.argv[2].split(",")} if len(sys.argv) > 2 and sys.argv[1] == "--rows" else None
     path = record.scratch(CORPUS)
     seen = last_verdicts(path)
     current = {"i": -1}
@@ -145,10 +150,11 @@ if __name__ == "__main__":
     out = open(path, "a")
     def emit(rec): out.write(json.dumps(rec) + "\n"); out.flush()
     for i, r in enumerate(rows):
-        if seen.get(i) == "STARTED":
+        if only is not None and i not in only: continue
+        if only is None and seen.get(i) == "STARTED":
             emit({"i": i, "key": r["sample_key"], "verdict": "HANG", "reason": "no record after STARTED: killed or hung"})
             print(f"[{i:3d}] HANG               stepped over", flush=True); continue
-        if i in seen: continue
+        if only is None and i in seen: continue
         if i in HEAVY:
             emit({"i": i, "key": r["sample_key"], "verdict": "SHAPE2-SKIPPED", "reason": HEAVY[i]}); continue
         if time.time() - t_start > RETIRE_AFTER:
