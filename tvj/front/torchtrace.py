@@ -70,6 +70,9 @@ def tensor_terms(t, roles, grid):
     a = np.empty(len(terms), dtype=object); a[:] = terms
     return STensor(a.reshape(tuple(t.shape)))
 
+_CASTS = {"to", "type", "type_as", "int", "long", "short", "bool", "byte", "char"}
+
+
 def replay(events, seed, target):
     """Walk the recorded ops, computing terms wherever every tensor input is known.
     `seed` maps id(tensor) -> STensor.  Returns the STensor for `target`, or None."""
@@ -91,6 +94,14 @@ def replay_all(events, seed):
         return x
     for name, args, kwargs, out in events:
         if not isinstance(out, torch.Tensor) or id(out) in sym: continue
+        # A cast from floating point to an integer or bool dtype truncates, and the
+        # front-end models `to`, `type`, `type_as` and friends as the identity -- right
+        # for a float cast over the reals, wrong for this one.  The recorded output
+        # carries the dtype the op really produced, so leave such a tensor undefined:
+        # whatever depends on it stays unknown rather than being built wrong.
+        if (name in _CASTS and not (out.is_floating_point() or out.is_complex())
+                and any(isinstance(a, torch.Tensor) and a.is_floating_point() for a in args)):
+            continue
         sa = [sub(a) for a in args]; sk = {k: sub(v) for k, v in kwargs.items()}
         if any(v is MISSING for v in sa) or any(v is MISSING for v in sk.values()): continue
         if not any(isinstance(v, STensor) for v in list(sa) + list(sk.values())): continue

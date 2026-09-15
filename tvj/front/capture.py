@@ -7,7 +7,7 @@ both the tolerance-test output and everything the symbolic judge needs.
 Tensors are mapped to roles (input names / "out") by storage base plus element
 offset, so the kernel's parameter names are irrelevant.
 """
-import torch, triton
+import functools, torch, triton
 from triton.runtime.jit import JITFunction
 from tvj.core import terms as T
 from tvj.core import ttir as P
@@ -59,6 +59,12 @@ def _install_provenance():
         if f is None: continue
         saved[name] = f
         def make(f):
+            # wraps, so the torch trace records the method's own name.  Without it
+            # every one of _COPY_METHODS -- view, reshape, contiguous, to, clone,
+            # flatten -- was recorded as "w", which no replay handler matches: a
+            # wrapper that reshaped a kernel's output, or an input before a
+            # launch, could not be replayed at all.
+            @functools.wraps(f)
             def w(self, *a, **k):
                 r = f(self, *a, **k)
                 try:

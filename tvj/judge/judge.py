@@ -762,8 +762,8 @@ def judge(cand, timeout=150, tol_trials=5):
                 # Seed by STORAGE as well as by object: the wrapper sees views of the
                 # inputs (x.view(B, C, -1) in row 51), and a view is a new object whose
                 # elements are the input's own.  Seeding it from its physical offsets
-                # does not depend on replaying the view op -- which matters, since
-                # inside the trace `view` is recorded under a name no handler matches.
+                # does not depend on replaying the view op, whose handler may not
+                # cover every form a wrapper calls it with.
                 # A storage an in-place op writes is left out: its offsets no longer
                 # hold the input.
                 mutated = {roles.get(root_storage(base_of(o))) for nm, _, _, o in tr.events
