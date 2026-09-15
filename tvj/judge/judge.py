@@ -682,7 +682,7 @@ def judge(cand, timeout=150, tol_trials=5):
         SPEC.USED.clear()
         try:
             for n in _rng: setattr(torch, n, lifted(n))
-            spec = first(sm(*sin))
+            with SPEC.tensor_checks_pass(sm): spec = first(sm(*sin))
         except NotImplementedError as e:
             rec["verdict"] = "SPEC-UNSUPPORTED"
             rec["reason"] = str(e).replace("spec front-end: unsupported torch op ", "")[:70]; return rec

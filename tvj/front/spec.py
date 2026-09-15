@@ -15,7 +15,7 @@ Spec-side decisions (they are decisions):
                       (matched forms canonicalise ~10x cheaper).
   spec.reduce-order   reductions are n-ary AC sums; no order is implied.
 """
-import functools, re
+import contextlib, functools, re
 import numpy as np
 from tvj.core import terms as T
 from tvj.decide import delegate as _DEL
@@ -322,6 +322,40 @@ class STensor:
                 if k in HARMLESS: kwargs.pop(k)
                 else: raise NotImplementedError(f"spec front-end: unsupported torch op {name}(...{k}=)")
         return h(*args, **kwargs)
+
+@contextlib.contextmanager
+def tensor_checks_pass(model):
+    """While building `model`'s spec, let an STensor through the reference's own
+    `isinstance(x, torch.Tensor)` and `torch.is_tensor(x)`.
+
+    Kornia's losses and colour conversions open with `if not torch.is_tensor(input):
+    raise TypeError`, and eleven KernelBook references never got past that line.  The
+    check is answered only in the globals of the row's own source -- the module a
+    forward was defined in, unless that is torch -- and in `torch.is_tensor`, which
+    is Python.  Making STensor claim the class instead (a `__class__` property) was
+    tried and segfaults: torch's C argument parser then takes it for a real tensor
+    and unpacks it (KernelBook rows 257, 272, 351).  Every op still dispatches
+    through __torch_function__, and one we do not model is still refused."""
+    import builtins, torch
+    real_isinstance, real_is_tensor = builtins.isinstance, torch.is_tensor
+    tensor_types = (torch.Tensor, torch.autograd.Variable)
+    def isinstance_(obj, cls):
+        if type(obj) is STensor:
+            classes = cls if real_isinstance(cls, tuple) else (cls,)
+            if any(c in tensor_types for c in classes): return True
+        return real_isinstance(obj, cls)
+    spaces = {}
+    for m in model.modules():
+        g = getattr(type(m).forward, "__globals__", None)
+        if g is not None and not str(g.get("__name__", "")).startswith("torch"): spaces[id(g)] = g
+    patched = [g for g in spaces.values() if "isinstance" not in g]
+    for g in patched: g["isinstance"] = isinstance_
+    torch.is_tensor = lambda obj: type(obj) is STensor or real_is_tensor(obj)
+    try: yield
+    finally:
+        torch.is_tensor = real_is_tensor
+        for g in patched: g.pop("isinstance", None)
+
 
 def symbolic_module(model, prefix_p="p_", prefix_b="b_"):
     """Replace every parameter/buffer of `model` by a symbolic input named by
