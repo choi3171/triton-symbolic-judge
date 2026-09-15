@@ -20,6 +20,10 @@ _LAUNCH_KW = {"num_warps", "num_stages", "num_ctas", "maxnreg", "enable_fp_fusio
 
 _calls, _orig = [], JITFunction.run
 def _rec(self, *args, grid, warmup=False, **kwargs):
+    # a float the torch trace handed out from `.item()` is a float subclass; the
+    # launch and its record get the plain value (see torchtrace.TracedFloat)
+    plain = lambda v: float(v) if type(v).__name__ == "TracedFloat" else v
+    args = tuple(plain(a) for a in args); kwargs = {k: plain(v) for k, v in kwargs.items()}
     _calls.append((self, grid, args, dict(kwargs)))
     return _orig(self, *args, grid=grid, warmup=warmup, **kwargs)
 
