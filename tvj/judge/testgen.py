@@ -204,7 +204,26 @@ def emit(rec, directives=None):
         return "\n".join(body) + "\n"
     body.append("        ok = torch.isfinite(a) & torch.isfinite(b)")
     body.append("        if not bool(ok.any()): continue")
-    if rel_d is None:
+    if rel_d is None and any(d.kind == "vary-parameter" for d in directives):
+        # Redrawn parameters in [-1, 1] are far larger than an initialiser's, and a deep
+        # module's output grows with them.  KernelBook row 375 (three convolutions and
+        # three transposed ones) reaches |out| ~ 800, where the float32 REFERENCE is
+        # 0.27 away from its own float64 run and the kernel 0.17: `allclose` at 1e-2
+        # failed a kernel more accurate than the reference.  So a disagreement counts
+        # only if the kernel is farther from the float64 reference than float32 roundoff
+        # explains -- ten times the reference's own distance.
+        body.append("        if not torch.allclose(a[ok], b[ok], atol=tol, rtol=tol):")
+        body.append("            try:")
+        body.append("                with torch.no_grad():")
+        body.append("                    e = _first(copy.deepcopy(reference).double()(*[x.double() if torch.is_tensor(x)")
+        body.append("                        and x.is_floating_point() else x for x in xs])).double()")
+        body.append("            except Exception:")
+        body.append("                return False")
+        body.append("            _s = max(float(e[ok].abs().max()), 1e-30)")
+        body.append("            _er = float((a.double() - e)[ok].abs().max()) / _s")
+        body.append("            _ek = float((b.double() - e)[ok].abs().max()) / _s")
+        body.append(f"            if _ek > 10.0 * max(_er, {ACC.U32!r}): return False")
+    elif rel_d is None:
         body.append("        if not torch.allclose(a[ok], b[ok], atol=tol, rtol=tol): return False")
     else:
         body.append("        # `tol` cannot see this one -- see compare-relative in the header")

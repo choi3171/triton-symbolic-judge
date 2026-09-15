@@ -213,9 +213,9 @@ claim("harness_fixes.py", "honest counterpoint: how much of this a cheap harness
       [r"poisoned with NaN before the trial: False -> tolerance test PASSES",
        r"poisoned with NaN before the trial: True  -> tolerance test FAILS",
        r"the honest kernel still passes under poisoning: True"], tag="gpu")
-claim("testgen_validate.py", "the checks testgen.emit writes, run on every row the record gives each directive and on every row the judge PASSes: vary-parameter catches all 31 rows it applies to, including the 9 the harness's own comparison passes, and stress-regime all 3; neither fails a single PASS row; vary-input writes nothing the harness does not already do",
+claim("testgen_validate.py", "the checks testgen.emit writes, run on every row the record gives each directive and on every row the judge PASSes: vary-parameter catches all 42 rows it applies to, including every one the harness's own comparison passes (9, or 10 when uninitialised parameters let KernelBook row 15 through), and stress-regime all 3; neither fails a single PASS row; vary-input writes nothing the harness does not already do",
       [r"4/4 emitted checks run",
-       r"vary-parameter\s+caught 31/31; baseline-blind rows caught 9/9; false alarms 0/\d+",
+       r"vary-parameter\s+caught 42/42; baseline-blind rows caught (\d+)/\1; false alarms 0/\d+",
        r"stress-regime\s+caught 3/3; baseline-blind rows caught 3/3; false alarms 0/\d+",
        r"vary-input\s+emits no code beyond the baseline",
        r"every row the baseline passes and a directive applies to is caught by its emitted check: ok",
