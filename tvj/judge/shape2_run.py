@@ -16,7 +16,7 @@ from 128 to 2048 -- and judges the same kernel against the same reference there.
 Records go to record.scratch("traces_shape2"), published like any corpus.  Per
 row: k, numel2, shapes2, and the judge's usual fields including `grids`.  Rows
 the reference itself rejects at the new shape (a hard-coded view, a batch baked
-into __init__) are SHAPE2-NA: nothing to hold the kernel to.  The four rows that
+into __init__) are SHAPE2-NA: nothing to hold the kernel to.  The five rows that
 took more than 10 s at the corpus shape are SHAPE2-SKIPPED: at 33x they are the
 alarm and, for row 92's 418k-node spec term, the machine.
 
@@ -35,7 +35,8 @@ from tvj.judge.judge import judge, Timeout
 
 CORPUS = "traces_shape2"
 ROWS = "data/triton_traces.json"
-HEAVY = {128: "84 s at the corpus shape", 51: "52 s", 92: "29 s, a 418k-node spec term", 129: "12 s"}
+HEAVY = {128: "84 s at the corpus shape", 51: "52 s", 92: "29 s, a 418k-node spec term", 129: "12 s",
+         152: "64 s and 3.8 GB at the corpus shape"}
 MEM_CAP = float(os.environ.get("TVJ_MEM_CAP_GB", 5)) * 2**30
 RETIRE_AFTER = 1200
 
