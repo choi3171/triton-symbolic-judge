@@ -769,6 +769,8 @@ def multi_head_attention_forward(query, key, value, embed_dim_to_check, num_head
     unbatched = q.ndim == 2                         # (L, E) -> (L, 1, E)
     if unbatched: q, k, v = q.unsqueeze(1), k.unsqueeze(1), v.unsqueeze(1)
     L, N, E = q.shape; S = k.shape[0]; h = num_heads; hd = E // h
+    if E != embed_dim_to_check or hd * h != E:
+        raise NotImplementedError("spec front-end: unsupported torch op multi_head_attention_forward(embed_dim mismatch)")
     if use_separate_proj_weight: wq, wk, wv = q_proj_weight, k_proj_weight, v_proj_weight
     else: wq, wk, wv = _st(in_proj_weight).chunk(3, 0)
     bq, bk, bv = _st(in_proj_bias).chunk(3, 0) if in_proj_bias is not None else (None, None, None)
@@ -1007,7 +1009,9 @@ _TORCH = {
     "einsum": einsum, "prelu": prelu, "binary_cross_entropy": binary_cross_entropy,
     "unfold": lambda x, kernel_size, dilation=1, padding=0, stride=1: im2col(x, kernel_size, dilation, padding, stride),
     "log10": lambda x: _st(x).log10(), "trace": lambda x: STensor(np.diagonal(_st(x).a)).sum(),
-    "repeat_interleave": lambda x, repeats, dim=None, output_size=None: _st(x).repeat_interleave(repeats, dim),
+    "repeat_interleave": lambda x, repeats, dim=None, output_size=None:
+        _st(x).repeat_interleave(repeats, dim) if output_size is None
+        else _unsupported("repeat_interleave(output_size=)")(),
     "dot": lambda a, b: _st(a).dot(b),
     "pairwise_distance": lambda x1, x2, p=2.0, eps=1e-6, keepdim=False:
         (_st(x1) - _st(x2) + eps).norm(p, -1, keepdim),

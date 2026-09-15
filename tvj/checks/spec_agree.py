@@ -123,6 +123,32 @@ CASES = [
     ("max_pool1d dilation=3",     lambda x: F.max_pool1d(x, 2, 1, 0, 3, False, False),
      dict(x=(1, 2, 9))),
     ("unsqueeze(dim=1)",          lambda x: torch.unsqueeze(x, dim=1) + 0.0, dict(x=(3, 4))),
+    # -- the ops KernelBook references stopped at ---------------------------------
+    ("einsum bnij,bnjk->bnik",    lambda a, b: torch.einsum("bnij,bnjk->bnik", a, b),
+     dict(a=(2, 3, 4, 5), b=(2, 3, 5, 2))),
+    ("einsum ij,ij-> (list)",     lambda a, b: torch.einsum("ij,ij->", [a, b]), dict(a=(3, 4), b=(3, 4))),
+    ("prelu per channel",         lambda x, w: F.prelu(x, w),             dict(x=(2, 3, 4, 4), w=(3,))),
+    ("binary_cross_entropy",      lambda x, y, w: F.binary_cross_entropy(torch.sigmoid(x), torch.sigmoid(y), w),
+     dict(x=(2, 3, 4), y=(2, 3, 4), w=(2, 3, 4))),
+    ("kl_div(batchmean)",         lambda x, y: F.kl_div(x, torch.sigmoid(y), reduction="batchmean"),
+     dict(x=(3, 4), y=(3, 4))),
+    ("kl_div(log_target)",        lambda x, y: F.kl_div(x, y, reduction="sum", log_target=True),
+     dict(x=(3, 4), y=(3, 4))),
+    ("F.unfold k3 p1 s2",         lambda x: F.unfold(x, 3, 1, 1, 2),      dict(x=(2, 3, 5, 6))),
+    ("Tensor.unfold(-1, 2, 2)",   lambda x: x.unfold(-1, 2, 2) + 0.0,     dict(x=(2, 3, 5))),
+    ("pad replicate",             lambda x: F.pad(x, (1, 2, 2, 1), mode="replicate"), dict(x=(1, 2, 4, 5))),
+    ("pad reflect",               lambda x: F.pad(x, (1, 2, 2, 1), mode="reflect"), dict(x=(1, 2, 4, 5))),
+    ("pad circular",              lambda x: F.pad(x, (1, 2, 2, 1), mode="circular"), dict(x=(1, 2, 4, 5))),
+    ("log10",                     lambda x: torch.log10(x * x + 0.5),     dict(x=(3, 4))),
+    ("trace",                     lambda x: torch.trace(x),               dict(x=(4, 4))),
+    ("repeat_interleave(dim=1)",  lambda x: torch.repeat_interleave(x, 2, dim=1), dict(x=(2, 3, 2))),
+    ("pairwise_distance",         lambda a, b: F.pairwise_distance(a, b), dict(a=(3, 5), b=(3, 5))),
+    ("renorm(p=2, dim=0)",        lambda x: torch.renorm(x * 3.0, 2, 0, 1.0), dict(x=(3, 4))),
+    ("dot + mv",                  lambda a, m, v: a.dot(m.mv(v)),         dict(a=(3,), m=(3, 4), v=(4,))),
+    ("conv1d unbatched",          lambda x, w, b: F.conv1d(x, w, b, 1, 1), dict(x=(3, 7), w=(4, 3, 3), b=(4,))),
+    ("multi_head_attention_forward", lambda q, k, v, wi, bi, wo, bo: F.multi_head_attention_forward(
+        q, k, v, 4, 2, wi, bi, None, None, False, 0.0, wo, bo, training=False, need_weights=False)[0],
+     dict(q=(3, 2, 4), k=(5, 2, 4), v=(5, 2, 4), wi=(12, 4), bi=(12,), wo=(4, 4), bo=(4,))),
 ]
 
 # Pooling gets a sweep rather than a case: two of the flags (`ceil_mode`,
@@ -155,6 +181,10 @@ REFUSALS = [
     ("div(rounding_mode='floor')", lambda x: torch.div(x, 2.0, rounding_mode="floor"), dict(x=(3, 4))),
     ("div(rounding_mode='trunc')", lambda x: torch.div(x, 2.0, rounding_mode="trunc"), dict(x=(3, 4))),
     ("dropout(training=True)",     lambda x: F.dropout(x, 0.5, True),                  dict(x=(3, 4))),
+    ("pad(negative)",              lambda x: F.pad(x, (-1, 1), mode="replicate"),      dict(x=(1, 2, 5))),
+    ("mha(attn_mask=)",            lambda q, wi, wo, m: F.multi_head_attention_forward(
+        q, q, q, 4, 2, wi, None, None, None, False, 0.0, wo, None, training=False, attn_mask=m)[0],
+     dict(q=(3, 1, 4), wi=(12, 4), wo=(4, 4), m=(3, 3))),
 ]
 
 if __name__ == "__main__":
