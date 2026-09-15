@@ -202,10 +202,36 @@ class STensor:
         if self.ndim == 0: return self.reshape(1)
         return self.reshape(*sh[:s], -1, *sh[e+1:])
     def item(self): return self.a.reshape(-1)[0]
+    @property
+    def is_nested(self): return False
+    def bool(self): return self._map(lambda t: t if _is_bool(t) else T.cmp("ne", t, T.ZERO))
+    def dot(self, o): return (self * _st(o)).sum()
+    def mv(self, o): return self @ o
+    def log10(self): return self.log() / 2.302585092994046      # the interpreter's log10f
+    def unfold(self, dim, size, step):
+        """Tensor.unfold: windows of `size` every `step` along `dim`, the window last."""
+        dim %= self.ndim
+        wins = [np.take(self.a, range(i, i + size), axis=dim) for i in range(0, self.shape[dim] - size + 1, step)]
+        return STensor(np.moveaxis(np.stack(wins, axis=dim), dim + 1, -1))
+    def unflatten(self, dim, sizes):
+        dim %= self.ndim
+        return self.reshape(*self.shape[:dim], *sizes, *self.shape[dim + 1:])
+    def renorm(self, p, dim, maxnorm):
+        """Each slice along `dim` whose p-norm exceeds maxnorm is scaled to maxnorm.
+        torch divides by norm + 1e-7 (ATen Renorm), so a scaled slice lands just under."""
+        other = tuple(d for d in range(self.ndim) if d != dim % self.ndim)
+        n = self.norm(p, other, keepdim=True)
+        return self * n.gt(maxnorm).where(maxnorm / (n + 1e-7), 1.0)
+    def repeat_interleave(self, repeats, dim=None):
+        if not isinstance(repeats, int):
+            raise NotImplementedError("spec front-end: unsupported torch op repeat_interleave(tensor repeats)")
+        return STensor(np.repeat(self.a.reshape(-1) if dim is None else self.a, repeats, axis=0 if dim is None else dim))
     def ndimension(self): return self.ndim
     def nelement(self): return self.a.size
     @property
     def data(self): return self
+    @data.setter
+    def data(self, v): self.a = _st(v).a            # `self.weight.data = torch.renorm(...)` in a forward
     @property
     def grad(self): return None
     def requires_grad_(self, *a): return self
@@ -711,12 +737,60 @@ def adaptive_pool(x, output_size, nd=2, mode="avg"):
                 else T.mul(T.const(1.0 / len(vals)), T.add(*vals))
     return STensor(out)
 
+# torch's name for a padding mode -> numpy's.  Same element choice in each pair:
+# replicate repeats the edge, reflect mirrors without repeating it, circular wraps.
+_PAD_MODES = {"replicate": "edge", "reflect": "reflect", "circular": "wrap"}
+
 def pad(x, pad, mode="constant", value=0.0):
-    if mode != "constant": raise NotImplementedError(f"spec front-end: unsupported torch op pad(mode={mode})")
+    if mode != "constant" and mode not in _PAD_MODES:
+        raise NotImplementedError(f"spec front-end: unsupported torch op pad(mode={mode})")
     x = _st(x); widths = [(0, 0)] * x.ndim
     for i in range(len(pad) // 2):
         widths[x.ndim - 1 - i] = (pad[2 * i], pad[2 * i + 1])
+    if any(a < 0 or b < 0 for a, b in widths):
+        raise NotImplementedError("spec front-end: unsupported torch op pad(negative)")
+    if mode != "constant": return STensor(np.pad(x.a, widths, mode=_PAD_MODES[mode]))
     return STensor(np.pad(x.a, widths, mode="constant", constant_values=T.const(value or 0.0)))
+
+def einsum(equation, *operands):
+    if len(operands) == 1 and isinstance(operands[0], (list, tuple)): operands = operands[0]
+    r = np.einsum(equation.replace(" ", ""), *[_st(o).a for o in operands])
+    return STensor(r) if isinstance(r, np.ndarray) else _scalar(r)
+
+def prelu(x, weight):
+    x, w = _st(x), _st(weight)
+    if w.a.size > 1 and x.ndim >= 2:              # one slope per channel, channel is dim 1
+        w = STensor(w.a.reshape((1, w.a.size) + (1,) * (x.ndim - 2)))
+    return x.gt(0.0).where(x, x * w)
+
+def kl_div(input, target, size_average=None, reduce=None, reduction="mean", log_target=False):
+    x, y = _st(input), _st(target)
+    if log_target: loss = y.exp() * (y - x)
+    # xlogy: 0 where the target is 0, which is not the limit the formula has elsewhere
+    else: loss = y.eq(0.0).where(0.0, y * y.log()) - y * x
+    if reduction == "batchmean": return loss.sum() * (1.0 / x.shape[0]) if x.ndim else loss.sum()
+    return _reduce_loss(loss, reduction)
+
+def binary_cross_entropy(x, y, weight=None, size_average=None, reduce=None, reduction="mean"):
+    x, y = _st(x), _st(y)
+    loss = -(y * x.log().maximum(-100.0) + (1.0 - y) * (1.0 - x).log().maximum(-100.0))
+    if weight is not None: loss = loss * _st(weight)
+    return _reduce_loss(loss, reduction)
+
+def im2col(x, kernel_size, dilation=1, padding=0, stride=1):
+    """F.unfold: (N, C, H, W) -> (N, C*kh*kw, L), columns in row-major window order."""
+    x = _st(x); kh, kw = _tup(kernel_size, 2); dh, dw = _tup(dilation, 2)
+    ph, pw = _tup(padding, 2); sh, sw = _tup(stride, 2)
+    if x.ndim != 4: raise NotImplementedError("spec front-end: unsupported torch op unfold(non-4d)")
+    a = np.pad(x.a, ((0, 0), (0, 0), (ph, ph), (pw, pw)), mode="constant", constant_values=T.ZERO)
+    N, C, H, W = a.shape
+    oh, ow = (H - dh * (kh - 1) - 1) // sh + 1, (W - dw * (kw - 1) - 1) // sw + 1
+    blocks = []
+    for i in range(oh):
+        for j in range(ow):
+            patch = np.stack([a[:, :, i * sh + u * dh, j * sw + v * dw] for u in range(kh) for v in range(kw)], axis=-1)
+            blocks.append(patch.reshape(N, C * kh * kw))
+    return STensor(np.stack(blocks, axis=-1))
 
 def bce_with_logits(x, y, weight=None, size_average=None, reduce=None, reduction="mean", pos_weight=None):
     x, y = _st(x), _st(y)
@@ -788,6 +862,8 @@ INFERRED_FROM_IMPL = {
     "gelu": "the tanh approximation's constants are torch's, not a definition",
     "softplus": "the `beta*x > threshold` guard returns x exactly; the crossover "
                 "is torch's choice, and the two branches are not equal over the reals",
+    "binary_cross_entropy": "each log is clamped at -100 (ATen BinaryCrossEntropy), "
+                            "so a probability of exactly 0 or 1 costs 100, not infinity",
 }
 
 # Everything else is a transcription of the op's published definition; where that
@@ -892,7 +968,16 @@ _TORCH = {
     "std": lambda x, dim=None, unbiased=True, keepdim=False, correction=None, axis=None:
         _st(x).std(axis if dim is None else dim, keepdim, unbiased, correction),
     "norm": lambda x, p=2, dim=None, keepdim=False, out=None, dtype=None: _st(x).norm(p, dim, keepdim),
-    "einsum": _unsupported("einsum"),
+    "kl_div": kl_div,
+    "unflatten": lambda x, dim, sizes: _st(x).unflatten(dim, sizes),
+    "renorm": lambda x, p, dim, maxnorm: _st(x).renorm(p, dim, maxnorm),
+    "einsum": einsum, "prelu": prelu, "binary_cross_entropy": binary_cross_entropy,
+    "unfold": lambda x, kernel_size, dilation=1, padding=0, stride=1: im2col(x, kernel_size, dilation, padding, stride),
+    "log10": lambda x: _st(x).log10(), "trace": lambda x: STensor(np.diagonal(_st(x).a)).sum(),
+    "repeat_interleave": lambda x, repeats, dim=None, output_size=None: _st(x).repeat_interleave(repeats, dim),
+    "dot": lambda a, b: _st(a).dot(b),
+    "pairwise_distance": lambda x1, x2, p=2.0, eps=1e-6, keepdim=False:
+        (_st(x1) - _st(x2) + eps).norm(p, -1, keepdim),
     "randn": _unsupported("randn (nondeterministic)"), "rand": _unsupported("rand (nondeterministic)"),
     "normal": _unsupported("normal (nondeterministic)"), "bernoulli": _unsupported("bernoulli (nondeterministic)"),
     "randn_like": _unsupported("randn_like (nondeterministic)"), "rand_like": _unsupported("rand_like (nondeterministic)"),
