@@ -52,6 +52,22 @@ _COPY_METHODS = ("contiguous", "to", "clone", "float", "half", "double", "detach
                  "cuda", "cpu", "type", "type_as", "flatten", "reshape", "view", "ravel")
 PROVENANCE = {}          # storage base of a copy -> storage base it came from
 
+def _same_elements(src, copy):
+    """Whether offset p of `copy`'s storage holds what offset p of `src`'s storage holds.
+
+    Provenance names a copy by its source's role and reads it at the copy's own
+    physical offsets, so it is only right when the copy keeps the layout and the
+    value.  `x.permute(1, 0, 2, 3).contiguous()` does not keep the layout: LLM row
+    119 launched on one, the kernel's loads came out as in0 at the wrong offsets,
+    and only the hardware gate stopped the FAIL -- the same mistake on a PASS has no
+    gate.  A float tensor cast to an integer dtype does not keep the value.  Such a
+    copy gets a role of its own instead, which the judge's head replay defines from
+    the ops that made it."""
+    if src.is_floating_point() and not copy.is_floating_point(): return False
+    if src.numel() != copy.numel(): return False
+    if src.is_contiguous() and copy.is_contiguous() and elem_offset(src) == elem_offset(copy): return True
+    return src.numel() <= 1 << 16 and physical_offsets(src) == physical_offsets(copy)
+
 def _install_provenance():
     saved = {}
     for name in _COPY_METHODS:
@@ -68,7 +84,7 @@ def _install_provenance():
             def w(self, *a, **k):
                 r = f(self, *a, **k)
                 try:
-                    if isinstance(r, torch.Tensor) and base_of(r) != base_of(self):
+                    if isinstance(r, torch.Tensor) and base_of(r) != base_of(self) and _same_elements(self, r):
                         PROVENANCE.setdefault(base_of(r), base_of(self))
                 except Exception: pass
                 return r
