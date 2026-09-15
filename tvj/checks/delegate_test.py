@@ -170,16 +170,19 @@ def _():
     (r,), cost = D.expand([t])
     return r is t and cost == 0, "identity"
 
-@case("FAIL-CLOSED  transposed convolution is refused, not keyed")
+@case("SOUND     transposed convolution has its own key, not the forward one")
 def _():
-    from tvj.core.sexec import Unsupported
+    # It used to be refused outright, which is fail-closed; it is modelled now, and
+    # the property that has to survive is the same: a transposed convolution never
+    # shares a symbol with the forward convolution of the same arguments, while the
+    # extern's spelling and F.conv_transpose2d's still share one.
     T.reset()
-    try:
-        D.conv(mk("in0", (1, 64, 56, 56)).a, mk("p_w", (64, 64, 3, 3)).a, None,
-               1, 1, 1, 1, 2, (1, 64, 56, 56), transposed=True)
-        return False, "did not refuse"
-    except Unsupported as e:
-        return True, str(e)[:40]
+    from tvj.front import spec
+    x, w = mk("in0", (1, 64, 56, 56)), mk("p_w", (64, 64, 3, 3))
+    fwd = spec.conv_nd(x, w, None, 1, 1, 1, 1, 2).flat()[0]
+    tr1 = spec.conv_transpose_nd(x, w, None, 1, 1, 0, 1, 1, 2).flat()[0]
+    tr2 = spec.conv_transpose_nd(x, w, None, 1, 1, 0, 1, 1, 2).flat()[0]
+    return fwd is not tr1 and tr1 is tr2, "forward and transposed separate; transposed twice shares"
 
 if __name__ == "__main__":
     bad = 0
