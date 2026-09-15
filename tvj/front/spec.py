@@ -592,6 +592,10 @@ def conv_nd(x, w, bias=None, stride=1, padding=0, dilation=1, groups=1, nd=2):
     """Direct convolution over object arrays: out = b + sum w * x_pad (cross-correlation)."""
     import itertools
     x, w = _st(x).a, _st(w).a
+    if x.ndim == nd + 1:
+        # torch takes an unbatched input, (C, L) for conv1d: KernelBook rows 106, 121,
+        # 134 and 256 call it so.  It is the batched convolution of a batch of one.
+        return STensor(conv_nd(STensor(x[None]), STensor(w), bias, stride, padding, dilation, groups, nd).a[0])
     N, Ci = x.shape[:2]; Co = w.shape[0]; ks = w.shape[2:]
     stride, dilation = _tup(stride, nd), _tup(dilation, nd)
     padding = _tup(padding, nd) if not isinstance(padding, str) else None
