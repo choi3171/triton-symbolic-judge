@@ -8,7 +8,7 @@ They state as a limitation that "differing use of floating point values can lead
 
 - Four checks besides value equality. The accuracy check addresses that limitation. Without the memory check, Sakana's stale-buffer exploit is equal over the reals, since the output is a buffer nobody wrote.
 - GPU confirmation before a FAIL is reported.
-- AC normal form before any solver, which decides 257 of 277 value questions with no solver call. One Volta call per output shape instead of per output element. Where Volta's canonicalization blows up, evaluation at random points over a finite field, following Mirage.
+- AC normal form before any solver, which decides 286 of 308 value questions with no solver call. One Volta call per output shape instead of per output element. Where Volta's canonicalization blows up, evaluation at random points over a finite field, following Mirage.
 - A counterexample becomes a harness check that runs without the judge.
 - Two datasets measured separately, 400 compiler-generated rows and 156 LLM-written ones, because they fail in different ways.
 

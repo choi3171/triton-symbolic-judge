@@ -40,8 +40,8 @@ Value is decided in stages, cheapest first:
 
 | stage | KernelBook value decisions |
 |---|---:|
-| AC normal form | 257 |
-| Volta | 14 |
+| AC normal form | 286 |
+| Volta | 16 |
 | Volta, then Z3 | 1 |
 | evaluation at random points | 5 |
 

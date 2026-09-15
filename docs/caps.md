@@ -21,11 +21,11 @@ At L=256 the well-shaped pairs stay under 4.5 GB in Volta. On the Python side th
 
 ## Rows not decided, and who can steer into them
 
-The Limits table in the [README](../README.md#limits) sorts every row the judge does not decide by cause. What matters is who controls whether a kernel ends up there. A torch op we do not model is fixed by the task, so no policy can aim at it. A TTIR construct we do not model can be aimed at, and so can our cost limits. Counted that way, a generator could aim at 24 rows of KernelBook and 19 of the LLM dataset, 6.0 % and 12.2 %.
+The Limits table in the [README](../README.md#limits) sorts every row the judge does not decide by cause. What matters is who controls whether a kernel ends up there. A torch op we do not model is fixed by the task, so no policy can aim at it. A TTIR construct we do not model can be aimed at, and so can our cost limits. Counted that way, a generator could aim at 13 rows of KernelBook and 2 of the LLM dataset, 3.2 % and 1.3 %.
 
-The TTIR bucket is a list of named constructs: 17 rows where an integer is derived from a real value or read from memory, 3 of transposed convolution, 1 of `scf.while`. The caps bucket is different, since any kernel can be made expensive.
+The TTIR bucket is a list of named constructs: 8 rows where an integer is derived from a real value or read from memory, and 1 of `scf.while`. The caps bucket is different, since any kernel can be made expensive.
 
-The largest steerable bucket in the LLM dataset is the torch tail: wrappers that finish the computation in PyTorch after the kernels. Requiring a single fused Triton kernel removes it. A torch tail also costs a launch and a materialized intermediate, so this does not trade away speed.
+The torch tail, wrappers that finish the computation in PyTorch after the kernels, was the largest steerable bucket in the LLM dataset at 16 rows. The judge now replays those ops, including arithmetic on a `.item()` value, and one KernelBook row is left in it.
 
 ## What makes Volta expensive
 
@@ -49,6 +49,6 @@ What is left in the caps bucket is five KernelBook rows: three stopped by the 15
 
 A term graph grows with the work a kernel does, not with the size of the program. A tiled matmul is Θ(M·N·K) nodes, because every output element is a sum of K products. So a kernel can always be made bigger, and raising a cap does not change what the threshold depends on.
 
-Several limits come from the same choice. Shapes are fixed because the grid is enumerated. Integers are concrete because that makes the memory check a dictionary lookup. A branch on a loaded value is refused because there is nothing symbolic to split. The same unrolling is why AC decides 257 of 277 value questions with no solver call, since everything is ground.
+Several limits come from the same choice. Shapes are fixed because the grid is enumerated. Integers are concrete because that makes the memory check a dictionary lookup. A branch on a loaded value is refused because there is nothing symbolic to split. The same unrolling is why AC decides 286 of 308 value questions with no solver call, since everything is ground.
 
 A row over a cap is UNKNOWN, not FAIL, so a wrong kernel that is expensive to decide goes unjudged. Evaluation at random points covers this wherever the field encoding applies. Outside it, the way in stays open, and unlike the TTIR bucket it needs no unusual operation.

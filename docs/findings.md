@@ -4,8 +4,8 @@ Rows where the tolerance test passes and the judge FAILs. The tolerance test is 
 
 | dataset | judged | tolerance passes, judge FAILs |
 |---|---|---|
-| 400 Inductor-generated (KernelBook) | 79 % | 6, with GPU differences at the witness point of up to 7.3 × 10³ |
-| 156 LLM-generated Triton | 66 % | 10: 7 on value, 3 on accuracy |
+| 400 Inductor-generated (KernelBook) | 91 % | 6, with GPU differences at the witness point of up to 7.3 × 10³ |
+| 156 LLM-generated Triton | 78 % | 10: 7 on value, 3 on accuracy |
 
 In all of them the tolerance test runs and sees nothing wrong.
 
@@ -45,4 +45,4 @@ All three are `tanh` written as `(e^{2x}−1)/(e^{2x}+1)`. This is exact over th
 
 ## Agreement
 
-Over the 317 judged KernelBook rows, the tolerance test and the judge agree on 307: 277 both pass and 30 both fail. They disagree on 10, all in one direction. 6 rows pass the tolerance test and fail the judge. The other 4 cannot be compared by the tolerance test, because both sides draw random numbers, and the judge decides them as PASS-ASSUMING. No row fails the tolerance test and passes the judge.
+Over the 363 judged KernelBook rows, the tolerance test and the judge agree on 352: 308 both pass and 44 both fail. They disagree on 11, all in one direction. 6 rows pass the tolerance test and fail the judge. The other 5 cannot be compared by the tolerance test, because both sides draw random numbers, and the judge decides them as PASS-ASSUMING. No row fails the tolerance test and passes the judge.

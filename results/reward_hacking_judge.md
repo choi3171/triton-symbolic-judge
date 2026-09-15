@@ -136,7 +136,7 @@ the GPU.
 ## Policy: what UNKNOWN is worth
 
 Every B-type hack is a policy question.  The steerable buckets are measured
-(`tvj.measure.limits`: 6.0 % of KernelBook, 12.2 % of the LLM dataset) and each
+(`tvj.measure.limits`: 3.2 % of KernelBook, 1.3 % of the LLM dataset) and each
 is reachable on purpose:
 
 - refused constructs: a data-dependent `scf.if` on a float comparison, `fptosi` of an input-dependent float,

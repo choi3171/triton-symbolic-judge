@@ -182,12 +182,12 @@ claim("delegate_test.py", "delegated library ops: the two spellings share a symb
        r"INERT     below the threshold nothing is delegated",
        r"FALLBACK  two symbols that differ are cashed in.*Volta proves equal",
        r"FALLBACK  expansion is refused above the budget"])
-claim("report.py", "the value split is what the corpus record says: AC 257, pit 5, Volta 14, Volta+Z3 1",
-      [r"value decided by:\s+\{'AC': 257, 'pit': 5, 'Volta': 14, 'Volta\+Z3': 1\}",
+claim("report.py", "the value split is what the corpus record says: AC 286, pit 5, Volta 16, Volta+Z3 1",
+      [r"value decided by:\s+\{'AC': 286, 'pit': 5, 'Volta': 16, 'Volta\+Z3': 1\}",
        r"the interesting cell: tolerance PASSES and the judge rejects -> 6"], args=("both",))
-claim("directives.py", "a counterexample yields an axis for 34 of the 47 FAILs, and only a point for 13; poison-output never fires on a natural corpus",
-      [r"47 FAILs over both corpora", r"KernelBook\s+an axis for 25 of 36",
-       r"LLM traces\s+an axis for 9 of 11", r"both\s+an axis for 34 of 47",
+claim("directives.py", "a counterexample yields an axis for 45 of the 61 FAILs, and only a point for 16; poison-output never fires on a natural corpus",
+      [r"61 FAILs over both corpora", r"KernelBook\s+an axis for 36 of 50",
+       r"LLM traces\s+an axis for 9 of 11", r"both\s+an axis for 45 of 61",
        r"poison-output\s+0\s+<- never on a natural corpus"])
 claim("relcompare.py", "a generated check has to see the row it came from: the relative comparison catches every trial where the harness's absolute one is blind, and stays silent on every PASS row",
       [r"relative catches every trial and absolute is blind on every row: ok",
@@ -278,8 +278,8 @@ claim("precond2.py", "float-validity preconditions: naive softmax |x|<=86.64, sa
 claim("nf_rat.py", "Volta's rational form on KernelBook row 61: the multiplicative depth is 1, one output sums 4 fractions with distinct softmax denominators (4 softmax rows over different slices of one input), and the cross-multiplied equality check has ~1e6 monomials per output before it can compare anything",
       [r"multiplicative depth 1 / 1", r"distinct denominators 4 / 4", r"denominator 2\.6e\+02 / 2\.6e\+02",
        r"equality check N1\*D2 vs N2\*D1: 1\.3e\+06 vs 1\.4e\+06"], args=("kb", "61"), tag="gpu")
-claim("shape2.py", "the LLM corpus re-judged at a second shape (leading dim an odd m with m*inner > 2048: two or more blocks and a tail): all 90 of the 92 PASS rows that could be re-judged stay PASS, and 123 of 156 rows had run every launch as a single program at the corpus shape",
-      [r"PASS at shape 1, FAIL or crash at shape 2: 0", r"\nPASS\s+90\s+0\s+0\s+0\s+2\n", r"single program at shape 1: 123 of 156"])
+claim("shape2.py", "the LLM corpus re-judged at a second shape (leading dim an odd m with m*inner > 2048: two or more blocks and a tail): of the 107 PASS rows that could be re-judged 104 stay PASS, row 19 FAILs where its reference's divisor stops equalling the batch size, and 122 of 156 rows had run every launch as a single program at the corpus shape",
+      [r"PASS at shape 1, FAIL or crash at shape 2: 1", r"\[ 19\] FAIL\s+tol@2=False", r"\nPASS\s+104\s+1\s+2\s+0\s+3\n", r"single program at shape 1: 122 of 156"])
 
 MODULE = {}
 for _root, _dirs, _files in os.walk("tvj"):
