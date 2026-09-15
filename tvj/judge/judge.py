@@ -571,6 +571,7 @@ def judge(cand, timeout=150, tol_trials=5):
         phys = physical_offsets(out)
         kterms = [grid.store.get((out_role, p)) for p in phys]
         unwritten, seen = set(), set()
+        uncaptured = None                 # (buffers, reason) left for the head replay to settle
         def scan(t):
             if t is None or t.uid in seen: return
             seen.add(t.uid)
@@ -632,13 +633,21 @@ def judge(cand, timeout=150, tol_trials=5):
             if unwritten and hidden:
                 op = sorted(hidden.values())[0]
                 rng = any(w in op for w in ("rand", "normal", "dropout", "bernoulli", "multinomial"))
-                rec["verdict"] = "NONDETERMINISTIC" if rng else "UNKNOWN"
-                rec["obligation"] = "coverage"; rec["uncaptured"] = hidden
-                rec["reason"] = (f"the output depends on randomness ({op}); it is not a function "
-                                 "of the inputs, so there is nothing to refine"
-                                 if rng else
-                                 f"part of the output was produced by an op we do not intercept ({op})")
-                return rec
+                rec["uncaptured"] = hidden
+                if rng:
+                    rec["verdict"] = "NONDETERMINISTIC"; rec["obligation"] = "coverage"
+                    rec["reason"] = (f"the output depends on randomness ({op}); it is not a function "
+                                     "of the inputs, so there is nothing to refine")
+                    return rec
+                # Not yet UNKNOWN: the op that wrote the buffer is in the torch trace,
+                # and the head replay below may define it from the inputs -- LLM row
+                # 152 launches on torch.softmax(x).  Whatever it leaves free is
+                # decided here, after it has run.
+                reason = f"part of the output was produced by an op we do not intercept ({op})"
+                if unwritten - set(hidden):
+                    rec["verdict"] = "UNKNOWN"; rec["obligation"] = "coverage"; rec["reason"] = reason
+                    return rec
+                uncaptured, unwritten = (set(hidden), reason), set()
             if unwritten:
                 rec["diff_symbols"] = {"only_spec": [], "only_kernel": sorted(unwritten)}
                 return fail("memory", f"output depends on a buffer no launch wrote ({sorted(unwritten)[0]})")
@@ -793,6 +802,11 @@ def judge(cand, timeout=150, tol_trials=5):
                     rec["head"] = {r: f"{len(d)}/{size[r]} elements" for r, d in defined.items()}
             except Exception as e:
                 rec["head_error"] = f"{type(e).__name__}: {str(e)[:60]}"
+        if uncaptured is not None:
+            left = uncaptured[0] & set(sym_domain(kterms))
+            if left:
+                rec["verdict"] = "UNKNOWN"; rec["obligation"] = "coverage"; rec["reason"] = uncaptured[1]
+                return rec
 
         # --- obligation: value -------------------------------------------------
         def value_pass(sf, kterms):
