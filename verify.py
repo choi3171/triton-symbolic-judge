@@ -278,8 +278,8 @@ claim("precond2.py", "float-validity preconditions: naive softmax |x|<=86.64, sa
 claim("nf_rat.py", "Volta's rational form on KernelBook row 61: the multiplicative depth is 1, one output sums 4 fractions with distinct softmax denominators (4 softmax rows over different slices of one input), and the cross-multiplied equality check has ~1e6 monomials per output before it can compare anything",
       [r"multiplicative depth 1 / 1", r"distinct denominators 4 / 4", r"denominator 2\.6e\+02 / 2\.6e\+02",
        r"equality check N1\*D2 vs N2\*D1: 1\.3e\+06 vs 1\.4e\+06"], args=("kb", "61"), tag="gpu")
-claim("shape2.py", "the LLM corpus re-judged at a second shape (leading dim an odd m with m*inner > 2048: two or more blocks and a tail): 0 of the 89 PASS rows change verdict, and 123 of 156 rows had run every launch as a single program at the corpus shape",
-      [r"PASS at shape 1, FAIL or crash at shape 2: 0", r"\nPASS\s+89\s+0\s+0\s+0\s+1\n", r"single program at shape 1: 123 of 156"])
+claim("shape2.py", "the LLM corpus re-judged at a second shape (leading dim an odd m with m*inner > 2048: two or more blocks and a tail): all 90 of the 92 PASS rows that could be re-judged stay PASS, and 123 of 156 rows had run every launch as a single program at the corpus shape",
+      [r"PASS at shape 1, FAIL or crash at shape 2: 0", r"\nPASS\s+90\s+0\s+0\s+0\s+2\n", r"single program at shape 1: 123 of 156"])
 
 MODULE = {}
 for _root, _dirs, _files in os.walk("tvj"):

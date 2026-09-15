@@ -103,8 +103,8 @@ FAIL rows (36)
 == LLM-generated Triton ==   156 rows
 
 verdict              count   share
-  PASS                  90    57.7%
-  UNKNOWN               28    17.9%
+  PASS                  92    59.0%
+  UNKNOWN               26    16.7%
   KERNEL-BROKEN         13     8.3%
   FAIL                  11     7.1%
   KERNEL-UNSUPPORTED     3     1.9%
@@ -115,22 +115,21 @@ verdict              count   share
   ADAPTER                1     0.6%
   ERROR                  1     0.6%
 
-judged (PASS/FAIL): 101  (64.7%)   UNKNOWN: 28   unsupported: 5   error/timeout: 4
+judged (PASS/FAIL): 103  (66.0%)   UNKNOWN: 26   unsupported: 5   error/timeout: 4
 
 corpus label  x  judge
-  label=True   judge=PASS     90
+  label=True   judge=PASS     92
   label=True   judge=FAIL     11
 
 tolerance test  x  judge   (judged rows only)
-  tol=True   judge=PASS     90
+  tol=True   judge=PASS     92
   tol=True   judge=FAIL     10
   tol=False  judge=FAIL      1
   the interesting cell: tolerance PASSES and the judge rejects -> 10
 
 why a row could not be judged (top 15)
     13  UNKNOWN            output produced by torch after the kernels (1 elements w
-     4  UNKNOWN            1 unprovable but numerically equal
-     3  UNKNOWN            unreproducible on hardware (GPU relative 0, max diff 0) 
+     5  UNKNOWN            1 unprovable but numerically equal
      3  KERNEL-BROKEN      raised inside the generated module -- AssertionError: 
      2  NO-ENTRY           
      1  ADAPTER            cannot bind wrapper parameter `weight1`
@@ -143,14 +142,15 @@ why a row could not be judged (top 15)
      1  UNKNOWN            64 unprovable but numerically equal
      1  UNKNOWN            unreproducible on hardware (GPU relative 6.2e-08, max di
      1  KERNEL-UNSUPPORTED data-dependent integer arithmetic (integer loaded from m
+     1  SPEC-ERROR         TypeError: neck inputs should be tuple or torch.tensor
 
 obligations
   FAIL by obligation:   {'accuracy': 3, 'value': 8}
   FAIL by reference grade: {'definition': 9, 'inferred-from-impl': 2}   (inferred-from-impl means torch's C++ is the authority, not a definition)
-  value decided by:     {'AC': 84, 'Volta': 2, 'pit': 1, 'Volta+Z3': 3}
-  reached the Z3 case split: 16 rows
-  precision tags:       {'exact': 93, None: 8}
-  precondition worse than the reference: 0 / 93 checked
+  value decided by:     {'AC': 86, 'Volta': 2, 'pit': 1, 'Volta+Z3': 3}
+  reached the Z3 case split: 14 rows
+  precision tags:       {'exact': 95, None: 8}
+  precondition worse than the reference: 0 / 95 checked
   accuracy: 3 rejected, 0 noted below the materiality floor
   memory errors recorded: 0 rows   {}
   accuracy obligation SKIPPED (not passed): 0 rows
@@ -160,10 +160,10 @@ obligations
 
 where the time goes (seconds, per row)
   kernel -> terms  total     138   median   0.05   p90    1.0   max    84.1   (n=135)
-  module -> terms  total      14   median   0.01   p90    0.0   max    12.8   (n=63)
-  Volta            total      61   median   0.01   p90    9.7   max    51.5   (n=19)
-  preconditions    total       2   median   0.03   p90    0.1   max     0.3   (n=72)
-  accuracy         total       0   median   0.02   p90    0.0   max     0.0   (n=9)
+  module -> terms  total      12   median   0.01   p90    0.0   max    11.3   (n=63)
+  Volta            total      38   median   0.00   p90    0.0   max    37.9   (n=17)
+  preconditions    total      21   median   0.03   p90    0.1   max    18.6   (n=74)
+  accuracy         total       0   median   0.02   p90    0.3   max     0.3   (n=10)
 
 FAIL rows (11)
   [ 23] Tanh                       accuracy     tol=True  GPU=inf       numerically worse than the reference at shift 1e2: relative error 0 -> i
