@@ -171,8 +171,8 @@ claim("reward_hack_lit.py", "unstable variance: equal over the reals (value=pass
 # dead threshold) are why these two run on every verification.
 claim("spec_sigcheck.py", "every spec handler agrees with torch: no swallowed, mis-positioned, or declared-and-unread argument",
       [r"0 disagreement\(s\): 0 silent \(0 mis-positioned, 0 swallowed, 0 dead\)"])
-claim("spec_agree.py", "the spec front-end computes what torch computes: 137 cases including the full pooling flag sweep, every indirect-read spelling, `==` as a mask, interpolation and multi-head attention, plus 6 modes it must refuse",
-      [r"137/137 handlers agree with torch", r"masked_fill\(m == 0\).*ok", r"gather\(dim=1\).*ok", r"index_select\(dim=0\).*ok", r"6/6 refusals as expected", r"avg_pool2d k3 s2 p1 ceil=True cip=False.*ok",
+claim("spec_agree.py", "the spec front-end computes what torch computes: 138 cases including the full pooling flag sweep, every indirect-read spelling, `==` as a mask, interpolation, transposed convolution and multi-head attention, plus 6 modes it must refuse",
+      [r"138/138 handlers agree with torch", r"masked_fill\(m == 0\).*ok", r"gather\(dim=1\).*ok", r"index_select\(dim=0\).*ok", r"6/6 refusals as expected", r"avg_pool2d k3 s2 p1 ceil=True cip=False.*ok",
        r"var\(dim, unbiased=False\).*ok", r"adaptive_avg_pool2d -> 3.*ok"])
 
 claim("delegate_test.py", "delegated library ops: the two spellings share a symbol, nothing else does, small operands are untouched, and a pair the shortcut cannot settle is expanded rather than reported",

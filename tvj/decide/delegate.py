@@ -144,17 +144,17 @@ def conv_cost(out_numel, cin_per_group, kernel_numel): return out_numel * cin_pe
 
 def conv(x, w, bias, stride, padding, dilation, groups, nd, out_shape,
          transposed=False, output_padding=0, dense=None):
-    """Direct convolution as one symbol.  Fail closed on anything the key below
-    does not encode -- transposed convolution has its own output-shape rule and
-    is refused rather than silently keyed as a forward convolution."""
-    if transposed: raise Unsupported("delegated conv: transposed")
+    """Direct or transposed convolution as one symbol.  Fail closed on anything the
+    key below does not encode: `transposed` is part of it, so a transposed
+    convolution is never keyed as the forward one with the same arguments."""
     _, wshape = _flat(w)
     out_numel = int(np.prod(out_shape))
     kernel_numel = int(np.prod(wshape[2:])) if len(wshape) > 2 else 1
-    cin_per_group = wshape[1] if len(wshape) > 1 else 1
+    # a transposed weight is (C_in, C_out/groups, *k): each output reads C_in/groups inputs
+    cin_per_group = (wshape[0] // max(int(groups), 1) if transposed else wshape[1]) if len(wshape) > 1 else 1
     if conv_cost(out_numel, cin_per_group, kernel_numel) < EXPAND_BELOW: return None
     ops = [x, w] + ([bias] if bias is not None else [])
-    name = _digest("conv", ops, ("nd", nd, "stride", tuple(np.ravel(stride).tolist()),
+    name = _digest("conv", ops, ("nd", nd, "transposed", bool(transposed), "stride", tuple(np.ravel(stride).tolist()),
                                  "padding", tuple(np.ravel(padding).tolist()),
                                  "dilation", tuple(np.ravel(dilation).tolist()),
                                  "groups", int(groups), "bias", bias is not None,

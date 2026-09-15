@@ -145,13 +145,16 @@ class Extern:
         a = self.args; k = self.kwargs
         alpha, beta = k.get("alpha", 1), k.get("beta", 1)
         if self.name == "convolution":
-            from tvj.front.spec import conv_nd
-            from tvj.core.sexec import Unsupported
+            from tvj.front.spec import conv_nd, conv_transpose_nd
             x, w_, b = a[0], a[1], a[2] if len(a) > 2 else k.get("bias")
             stride, padding, dilation = k.get("stride", a[3] if len(a) > 3 else 1), k.get("padding", a[4] if len(a) > 4 else 0), k.get("dilation", a[5] if len(a) > 5 else 1)
             transposed, groups = k.get("transposed", a[6] if len(a) > 6 else False), k.get("groups", a[8] if len(a) > 8 else 1)
-            if transposed: raise Unsupported("extern transposed convolution")
-            res = conv_nd(read(x), read(w_), read(b) if b is not None else None, stride, padding, dilation, groups, nd=w_.dim() - 2)
+            output_padding = k.get("output_padding", a[7] if len(a) > 7 else 0)
+            bias = read(b) if b is not None else None
+            if transposed:
+                res = conv_transpose_nd(read(x), read(w_), bias, stride, padding, output_padding, groups, dilation, nd=w_.dim() - 2)
+            else:
+                res = conv_nd(read(x), read(w_), bias, stride, padding, dilation, groups, nd=w_.dim() - 2)
         elif self.name.split(".")[0] in ("avg_pool1d", "avg_pool2d", "avg_pool3d",
                                          "max_pool1d_with_indices", "max_pool2d_with_indices",
                                          "max_pool3d_with_indices"):

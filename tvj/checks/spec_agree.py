@@ -145,6 +145,8 @@ CASES = [
     ("pairwise_distance",         lambda a, b: F.pairwise_distance(a, b), dict(a=(3, 5), b=(3, 5))),
     ("renorm(p=2, dim=0)",        lambda x: torch.renorm(x * 3.0, 2, 0, 1.0), dict(x=(3, 4))),
     ("dot + mv",                  lambda a, m, v: a.dot(m.mv(v)),         dict(a=(3,), m=(3, 4), v=(4,))),
+    ("conv_transpose2d s2 p1 op1 g2", lambda x, w, b: F.conv_transpose2d(x, w, b, 2, 1, 1, 2),
+     dict(x=(1, 4, 3, 3), w=(4, 1, 3, 3), b=(2,))),
     ("conv1d unbatched",          lambda x, w, b: F.conv1d(x, w, b, 1, 1), dict(x=(3, 7), w=(4, 3, 3), b=(4,))),
     # interpolate picks source positions in float32, as ATen does on the GPU; torch in
     # float64 picks them in float64.  With a power-of-two scale the two coincide.

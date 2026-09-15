@@ -662,6 +662,48 @@ def conv_nd(x, w, bias=None, stride=1, padding=0, dilation=1, groups=1, nd=2):
     for co in range(Co): out[:, co] = np.frompyfunc(lambda t, c=bb[co]: T.add(t, c), 1, 1)(dl[:, co])
     return STensor(out)
 
+def conv_transpose_nd(x, w, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1, nd=2):
+    """Transposed convolution: every input element scatters w * x into the output at
+    i*stride - padding + k*dilation.  weight is (C_in, C_out/groups, *k)."""
+    import itertools
+    x, w = _st(x).a, _st(w).a
+    if x.ndim == nd + 1:
+        return STensor(conv_transpose_nd(STensor(x[None]), STensor(w), bias, stride, padding,
+                                         output_padding, groups, dilation, nd).a[0])
+    N, Ci = x.shape[:2]; cog = w.shape[1]; Co = cog * groups; ks = w.shape[2:]; cig = Ci // groups
+    stride, padding, dilation = _tup(stride, nd), _tup(padding, nd), _tup(dilation, nd)
+    output_padding = _tup(output_padding, nd)
+    out_sp = [(x.shape[2 + d] - 1) * stride[d] - 2 * padding[d] + dilation[d] * (ks[d] - 1)
+              + output_padding[d] + 1 for d in range(nd)]
+    bb = _st(bias).a if bias is not None else None
+
+    def dense(with_bias=True):
+        acc = {}
+        for n in range(N):
+            for ci in range(Ci):
+                g = ci // cig
+                for ipos in itertools.product(*[range(s) for s in x.shape[2:]]):
+                    for kpos in itertools.product(*[range(k) for k in ks]):
+                        o = tuple(ipos[d] * stride[d] - padding[d] + kpos[d] * dilation[d] for d in range(nd))
+                        if not all(0 <= o[d] < out_sp[d] for d in range(nd)): continue
+                        for co in range(cog):
+                            acc.setdefault((n, g * cog + co) + o, []).append(T.mul(w[(ci, co) + kpos], x[(n, ci) + ipos]))
+        out = np.empty((N, Co, *out_sp), dtype=object)
+        for idx in itertools.product(*[range(s) for s in out.shape]):
+            terms = acc.get(idx, [])
+            if bb is not None and with_bias: terms = terms + [bb[idx[1]]]
+            out[idx] = T.add(*terms) if terms else T.ZERO
+        return out
+
+    # delegated exactly like conv_nd, under a key that says it is transposed
+    dl = _DEL.conv(x, w, None, stride, padding, dilation, groups, nd, (N, Co, *out_sp),
+                   transposed=True, output_padding=output_padding, dense=lambda: dense(with_bias=False))
+    if dl is None: return STensor(dense())
+    if bb is None: return STensor(dl)
+    out = np.empty(dl.shape, dtype=object)
+    for co in range(Co): out[:, co] = np.frompyfunc(lambda t, c=bb[co]: T.add(t, c), 1, 1)(dl[:, co])
+    return STensor(out)
+
 def pool_nd(x, kernel_size, stride=None, padding=0, nd=2, mode="max", ceil_mode=False,
             count_include_pad=True, divisor_override=None, dilation=1, **_):
     """Windowed max/avg reduction, written the same way conv_nd is."""
@@ -967,6 +1009,9 @@ _TORCH = {
     "conv2d": lambda input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1: conv_nd(input, weight, bias, stride, padding, dilation, groups, 2),
     "conv1d": lambda input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1: conv_nd(input, weight, bias, stride, padding, dilation, groups, 1),
     "conv3d": lambda input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1: conv_nd(input, weight, bias, stride, padding, dilation, groups, 3),
+    "conv_transpose1d": lambda input, weight, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1: conv_transpose_nd(input, weight, bias, stride, padding, output_padding, groups, dilation, 1),
+    "conv_transpose2d": lambda input, weight, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1: conv_transpose_nd(input, weight, bias, stride, padding, output_padding, groups, dilation, 2),
+    "conv_transpose3d": lambda input, weight, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1: conv_transpose_nd(input, weight, bias, stride, padding, output_padding, groups, dilation, 3),
     "pad": pad, "binary_cross_entropy_with_logits": bce_with_logits,
     "max_pool1d": lambda x, kernel_size, stride=None, padding=0, dilation=1,
                            ceil_mode=False, return_indices=False:
