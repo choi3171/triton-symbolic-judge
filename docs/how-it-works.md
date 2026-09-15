@@ -82,4 +82,4 @@ A wrong reference makes a correct kernel FAIL, which is visible. It can also mak
 
 So the reference side is checked in two ways. `tvj/checks/spec_sigcheck.py` compares every handler with torch's own signature: no argument swallowed, misplaced, or declared and never read. `tvj/checks/spec_agree.py` runs 113 cases through both torch and the reference side and compares the numbers. Handlers whose edge-case behavior was taken from torch's C++ rather than from its documentation are marked, and a FAIL that depends on one says so.
 
-`tvj/core/semantics.py` lists the 23 decisions the interpreter makes where Triton does not specify the behavior, e.g. what a masked load reads, whether i32 index arithmetic wraps, and whether a reduction is a tree or a fold. Each has its basis and evidence, and five were measured on hardware.
+`tvj/core/semantics.py` lists the 25 decisions the interpreter makes where Triton does not specify the behavior, e.g. what a masked load reads, whether i32 index arithmetic wraps, and whether a reduction is a tree or a fold. Each has its basis and evidence, and five were measured on hardware.

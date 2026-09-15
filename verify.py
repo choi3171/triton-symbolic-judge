@@ -100,8 +100,8 @@ claim("tf32.py", "input_precision=tf32 is a permission: ignored on sm_75, bitwis
        r"the permission was IGNORED"], tag="sm_75")
 claim("difftest_mm.py", "whole-kernel: semantics and GPU are equally far from float64",
       [r"semantics and GPU equally far from float64 \(within 5 %\): ok"], tag="sm_75")
-claim("semantics.py", "23 decisions, none open",
-      [r"23 semantic decisions over 26 core ops", r"\[open\]\s+0", r"\[measured\]\s+5"])
+claim("semantics.py", "25 decisions, none open",
+      [r"25 semantic decisions over 26 core ops", r"\[open\]\s+0", r"\[measured\]\s+5"])
 
 # --- Volta decision procedure ------------------------------------------------
 claim("volta_check.py", "Volta bridge: 18/18 identities, covering every operation code the wire carries; softmax naive==safe 16/16 and 128/128",

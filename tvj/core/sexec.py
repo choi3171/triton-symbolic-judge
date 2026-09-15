@@ -623,14 +623,26 @@ class Interp:
             # unverified, so say which one it is rather than guessing.
             out = []
             for u in bcast(a(0), shape).data:
+                if isinstance(u, (Pred, _PredTerm)) and n == "arith.uitofp":      # decision uitofp.i1
+                    out.append(self._select(u, self.dom.const(1.0), self.dom.const(0.0))); continue
                 if isinstance(u, (Pred, _PredTerm)):
-                    raise Unsupported(f"{n} of a comparison result (i1->float sign convention unverified)")
+                    raise Unsupported(f"{n} of a comparison result (Triton emits uitofp for bool->float)")
                 if isinstance(u, T.Term):
                     raise Unsupported(f"{n} of an integer loaded from memory")
                 out.append(self.dom.const(float(u)))
             put(Tile(shape, out))
         elif n in ("arith.fptosi", "arith.fptoui"):
-            raise Unsupported("float->int conversion of a symbolic value")
+            # decision fptosi.constant
+            bits = S.int_bits(P.elem_of(op.rtype))
+            lo, hi = (0, 1 << bits) if n == "arith.fptoui" else (-(1 << (bits - 1)), 1 << (bits - 1))
+            out = []
+            for u in bcast(a(0), shape).data:
+                v = u.v if isinstance(u, T.Const) else u if type(u) in (int, float) else None
+                if v is None: raise Unsupported("float->int conversion of a symbolic value")
+                if v != v or v in (float("inf"), float("-inf")) or not lo <= int(v) < hi:
+                    raise Unsupported(f"float->int conversion out of range ({v})")
+                out.append(int(v))                  # int() truncates toward zero
+            put(Tile(shape, out))
         elif n == "arith.cmpf":
             kind = _CMP.search(raw).group(1)
             x, y = bcast(a(0), shape), bcast(a(1), shape)

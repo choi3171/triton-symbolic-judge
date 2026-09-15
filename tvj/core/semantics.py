@@ -344,6 +344,27 @@ DECISIONS = [
         "turns a row with any assumption into PASS-ASSUMING with the reason "
         "attached; measure/indirection.py shows all four indirect shapes."),
 
+    Decision("fptosi.constant", "arith.fptosi",
+        "What does a float->int conversion give when the float is known statically?",
+        "The constant truncated toward zero.  Out of the target type's range is "
+        "refused.  A float that depends on the input is still refused.",
+        "documented",
+        "MLIR arith.fptosi / fptoui round toward zero and are poison out of range. "
+        "Inductor computes nearest-upsampling indices as (i.to(f32) * scale).to(i32), "
+        "where i is a program index, so the float is a constant the term algebra has "
+        "already folded -- with the same fp32 rounding every other folded constant "
+        "gets (terms.const).",
+        "KernelBook rows 114 and 343 (Upsample) stopped here."),
+
+    Decision("uitofp.i1", "arith.uitofp",
+        "What is a comparison result (i1) converted to float?",
+        "select(p, 1.0, 0.0).  sitofp of an i1, which would read the set bit as -1, "
+        "is still refused: Triton does not emit it.",
+        "documented",
+        "MLIR arith.uitofp reads its operand as unsigned.  Triton's cast emits uitofp "
+        "for every bool->float conversion, `(x > 0).to(tl.float32)`.",
+        "KernelBook rows 248 (GHMC) and 353 (TripletLoss) stopped here."),
+
 ]
 
 # Every `measured` entry carries an architecture tag in its evidence. sm_75 has no
