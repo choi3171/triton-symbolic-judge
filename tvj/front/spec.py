@@ -752,6 +752,39 @@ def pad(x, pad, mode="constant", value=0.0):
     if mode != "constant": return STensor(np.pad(x.a, widths, mode=_PAD_MODES[mode]))
     return STensor(np.pad(x.a, widths, mode="constant", constant_values=T.const(value or 0.0)))
 
+def multi_head_attention_forward(query, key, value, embed_dim_to_check, num_heads, in_proj_weight,
+                                 in_proj_bias, bias_k, bias_v, add_zero_attn, dropout_p,
+                                 out_proj_weight, out_proj_bias, training=True, key_padding_mask=None,
+                                 need_weights=True, attn_mask=None, use_separate_proj_weight=False,
+                                 q_proj_weight=None, k_proj_weight=None, v_proj_weight=None,
+                                 static_k=None, static_v=None, average_attn_weights=True, is_causal=False):
+    """nn.MultiheadAttention's functional form, for the case with nothing optional:
+    no masks, no bias_k/bias_v, no zero-attention row, no dropout.  Anything else is
+    refused rather than approximated."""
+    if (key_padding_mask is not None or attn_mask is not None or is_causal or bias_k is not None
+            or bias_v is not None or add_zero_attn or static_k is not None or static_v is not None
+            or (training and dropout_p > 0)):
+        raise NotImplementedError("spec front-end: unsupported torch op multi_head_attention_forward(mask/bias_kv/dropout)")
+    q, k, v = _st(query), _st(key), _st(value)
+    unbatched = q.ndim == 2                         # (L, E) -> (L, 1, E)
+    if unbatched: q, k, v = q.unsqueeze(1), k.unsqueeze(1), v.unsqueeze(1)
+    L, N, E = q.shape; S = k.shape[0]; h = num_heads; hd = E // h
+    if use_separate_proj_weight: wq, wk, wv = q_proj_weight, k_proj_weight, v_proj_weight
+    else: wq, wk, wv = _st(in_proj_weight).chunk(3, 0)
+    bq, bk, bv = _st(in_proj_bias).chunk(3, 0) if in_proj_bias is not None else (None, None, None)
+    q = _linear(q, wq, bq).reshape(L, N * h, hd).transpose(0, 1)
+    k = _linear(k, wk, bk).reshape(S, N * h, hd).transpose(0, 1)
+    v = _linear(v, wv, bv).reshape(S, N * h, hd).transpose(0, 1)
+    w = (q @ k.transpose(1, 2) * (1.0 / hd) ** 0.5).softmax(-1)      # (N*h, L, S)
+    out = (w @ v).transpose(0, 1).reshape(L * N, E)
+    out = _linear(out, out_proj_weight, out_proj_bias).reshape(L, N, E)
+    weights = None
+    if need_weights:
+        weights = w.reshape(N, h, L, S)
+        weights = weights.mean(1) if average_attn_weights else weights
+        if unbatched: weights = weights.squeeze(0)
+    return (out.squeeze(1) if unbatched else out), weights
+
 def einsum(equation, *operands):
     if len(operands) == 1 and isinstance(operands[0], (list, tuple)): operands = operands[0]
     r = np.einsum(equation.replace(" ", ""), *[_st(o).a for o in operands])
@@ -968,7 +1001,7 @@ _TORCH = {
     "std": lambda x, dim=None, unbiased=True, keepdim=False, correction=None, axis=None:
         _st(x).std(axis if dim is None else dim, keepdim, unbiased, correction),
     "norm": lambda x, p=2, dim=None, keepdim=False, out=None, dtype=None: _st(x).norm(p, dim, keepdim),
-    "kl_div": kl_div,
+    "multi_head_attention_forward": multi_head_attention_forward, "kl_div": kl_div,
     "unflatten": lambda x, dim, sizes: _st(x).unflatten(dim, sizes),
     "renorm": lambda x, p, dim, maxnorm: _st(x).renorm(p, dim, maxnorm),
     "einsum": einsum, "prelu": prelu, "binary_cross_entropy": binary_cross_entropy,
